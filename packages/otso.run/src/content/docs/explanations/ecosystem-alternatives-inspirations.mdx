@@ -1,70 +1,64 @@
 ---
 title: Ecosystem — Alternatives & Inspirations
-description: A friendly tour of related projects and ideas that informed Otso.
+description: How Otso compares to adjacent projects, with gratitude and links for deeper dives.
 ---
 
-This page highlights projects that overlap with Otso or inspired parts of it. It’s not a feature-by-feature comparison—more a map of “when to use what,” with links to explore.
+Otso lives happily in an ecosystem of IndieWeb and local‑first tools. This page summarizes how Otso differs, when you might choose something else, and how they can play together. We link out with admiration—these projects are great.
 
-## IndieWeb foundations
+## How Otso differs (at a glance)
 
-- Micropub — write API for your site. https://www.w3.org/TR/micropub/
-- IndieAuth — authentication for IndieWeb services. https://indieauth.net/
-- Webmention — cross-site replies/likes. https://www.w3.org/TR/webmention/
-- Microformats2 — semantic HTML for posts. https://microformats.org/
+- Otso is an event‑driven, local‑first toolkit: import (PESOS), publish (Micropub/POSSE), keep a durable archive (SQLite/Postgres), and build fast projections you can rebuild when needed.
+- Many adjacent tools are excellent at one slice (e.g., Micropub server, hosted site, file‑based notes). Otso complements them when you want import/sync + ownership in one place.
 
-Otso speaks these standards. That lets you mix-and-match tools without losing control of your data.
+## Micropub servers and hosted platforms
 
-## Micropub servers and hosts
+- Indiekit ([site](https://indiekit.indieweb.org/)) — a lovely Micropub server you can self‑host. Use it when you want a slim server that speaks Micropub, handles media, and connects to services. Otso adds an event store, import/sync, and projections; you can still publish to an Indiekit‑powered site.
 
-- Indiekit — Micropub server you can self-host. https://indiekit.indieweb.org/
-  - Great when you want a server that connects your site to services and handles media/syndication.
-  - Otso vs Indiekit: Otso adds an event store + import/sync layer (PESOS) and rebuildable projections. Indiekit is a slimmer Micropub server—perfect if that’s all you need.
+- Micro.blog ([site](https://micro.blog/)) — generous hosted IndieWeb blogging with Micropub, feeds, and export. If you want a turnkey home, Micro.blog is a joy. Otso can publish to it and import your archive so you retain your history.
 
-- Micro.blog — hosted IndieWeb blogging (Micropub, feeds, export). https://micro.blog/
-  - Best for a simple Micropub-powered blog with built-in social. Otso can publish to or import from Micro.blog.
+- WordPress ([site](https://wordpress.org/)) and Ghost ([site](https://ghost.org/)) — both are fantastic publishing platforms. Keep them as your public site while Otso maintains a local archive, runs imports, and syndicates out. Best of both worlds.
 
-- WordPress — huge ecosystem; REST/XML‑RPC, WXR export. https://wordpress.org/
-- Ghost — modern publishing; Admin API, JSON export, feeds. https://ghost.org/
-  - In Otso’s docs, both appear as common publish and import targets (POSSE/PESOS). Use them as your public site while Otso keeps a local archive and sync.
+## Local‑first notes and static content
 
-## Local-first notes & static content
+- Obsidian/Markdown ([Obsidian](https://obsidian.md/), Git repos, static sites) — plain files are comforting and powerful. Keep them! Otso can export Markdown projections or read Markdown sources. When you need consistent kinds, imports from APIs, search, or snapshots, Otso’s small database helps without taking that simplicity away.
 
-- Obsidian / Markdown repos — file-based workflows with git sync. https://obsidian.md/
-  - Great when you want plain files first. Otso can export projections to Markdown or read Markdown as a source; when you need richer queries, snapshots, or imports from APIs, Otso’s small DB helps.
+## Sources and targets (friends, not competitors)
 
-## Sources to sync (PESOS)
+Mastodon, Bluesky, Twitter/X, GitHub, Readwise, Pinboard/Raindrop/Pocket—these are where your stuff already lives. Otso treats them as import and/or publish endpoints:
 
-From the planning notes and limits roundup:
+- Mastodon — POSSE and import via APIs/archives.
+- Bluesky — app‑password auth + cursor pagination.
+- Twitter/X — tight API limits; archives remain valuable.
+- GitHub — activity feeds map cleanly to kinds.
+- Readwise — highlight sync from API/CSV.
 
-- Mastodon — publish (Micropub-compatible targets) and import via API/archives.
-- Bluesky — app password auth + cursor pagination.
-- Twitter/X — tiered APIs and strict limits; archives remain useful.
-- GitHub — activity feeds and Atom; straightforward mapping to kinds.
-- Readwise — highlight sync via API and CSV export. https://readwise.io/
-- Pinboard/Raindrop/Pocket — bookmarks and saved links as import sources.
+The focus is idempotent upserts, clear mappings (notes, replies, bookmarks, photos), and safe re‑runs.
 
-Otso’s import layer aims for idempotent upserts and clear mappings (notes, replies, bookmarks, photos, etc.).
+## Search and scheduling
 
-## Search & scheduling
+- Pagefind ([site](https://pagefind.app/)) — fast, local static search (Starlight’s default). Great for docs.
+- Algolia DocSearch ([site](https://docsearch.algolia.com/)) — hosted search for docs; easy if you’re in the DocSearch program.
+- Vercel Cron ([docs](https://vercel.com/docs/cron-jobs)) and Upstash QStash ([site](https://upstash.com/qstash)) — nice ways to automate sync/retries without heavy infra.
 
-- Pagefind — default static-site search (bundled by Starlight). https://pagefind.app/
-- Algolia DocSearch — hosted search for docs sites. https://docsearch.algolia.com/
-- Vercel Cron Jobs — schedule periodic syncs. https://vercel.com/docs/cron-jobs
-- Upstash QStash — serverless queueing for retries/fan-out. https://upstash.com/qstash
+## Local‑first sync inspirations
 
-## Local-first data & sync (inspiration)
+- Litestream ([site](https://litestream.io/)) / LiteFS ([docs](https://fly.io/docs/litefs/)) — pragmatic SQLite replication. Lovely for “SQLite as source of truth.”
+- ElectricSQL ([site](https://electric-sql.com/)) — CRDT‑powered sync (SQLite ⇄ Postgres) for true multi‑device, offline editing. Reach for it when you need collaborative editing beyond simple imports.
+- Datasette ([site](https://datasette.io/)) — a delight for exploring/querying SQLite. Inspires Otso’s “queryable archive” feel.
 
-- Litestream / LiteFS — SQLite replication + file-level sync. https://litestream.io/ • https://fly.io/docs/litefs/
-- ElectricSQL — CRDT‑powered sync (SQLite ⇄ Postgres) for true offline multi‑writer apps. https://electric-sql.com/
-- Datasette — simple, explorable SQLite apps; inspiration for “queryable archives.” https://datasette.io/
+## Standards we share (the glue)
 
-These aren’t drop‑in “alternatives” to Otso, but they influenced the recommended storage/sync paths in the docs (e.g., start with SQLite + snapshots; add replication; consider ElectricSQL if you need real multi‑device editing).
+- Micropub ([spec](https://www.w3.org/TR/micropub/)) — write API for your site.
+- IndieAuth ([site](https://indieauth.net/)) — authentication for IndieWeb services.
+- Webmention ([spec](https://www.w3.org/TR/webmention/)) — cross‑site replies/likes.
+- Microformats2 ([site](https://microformats.org/)) — semantic HTML for posts.
 
-## How to choose
+Otso speaks these, so you can mix tools without losing ownership.
 
-- You only need Micropub: Indiekit or a hosted Micropub‑friendly site (e.g., Micro.blog) may be enough.
-- You want an owned archive + imports: Otso’s CLI + store gives you idempotent sync, projections, and safety (snapshots).
-- You want both: Use Otso for ingest/publish and keep your existing site. POSSE to networks; PESOS imports bring history home.
+## When to reach for what
 
-If a project here should be added or corrected, open an issue with a link and a quick note on how you use it.
+- “I just need Micropub.” Use [Indiekit](https://indiekit.indieweb.org/) or a hosted Micropub‑friendly home like [Micro.blog](https://micro.blog/).
+- “I want an owned archive + imports.” Use Otso for ingest, snapshots, projections, and optional POSSE.
+- “I want both.” Keep your public site (WordPress, Ghost, Micro.blog) and let Otso import history, publish new posts, and keep everything searchable.
 
+If we missed a favorite project, open an issue with a link and a quick note—happy to add it.
