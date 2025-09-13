@@ -1,0 +1,15 @@
+{
+  "name": "otso",
+  "version": "1.0.0",
+  "description": "Otso monorepo",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter otso.run dev",
+    "build": "pnpm --filter otso.run build",
+    "preview": "pnpm --filter otso.run preview"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "packageManager": "pnpm@10.16.1"
+}
