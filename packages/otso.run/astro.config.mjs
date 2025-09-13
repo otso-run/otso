@@ -15,6 +15,9 @@ export default defineConfig({
 			title: 'Otso',
 			description: 'Local-first IndieWeb toolkit for archiving, syncing, harmonizing, and publishing your trails and streams.',
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/otso-run/otso' }],
+			head: [
+				{ tag: 'link', attrs: { rel: 'sitemap', href: '/sitemap-index.xml' } },
+			],
 			plugins: [
 				// Enable Algolia DocSearch when env vars are present
 				...(process.env.DOCSEARCH_APP_ID && process.env.DOCSEARCH_API_KEY && process.env.DOCSEARCH_INDEX_NAME
