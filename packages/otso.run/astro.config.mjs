@@ -10,17 +10,12 @@ export default defineConfig({
 			description: 'Welcome to Otso',
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/otso-run/otso' }],
 			sidebar: [
-				{
-					label: 'Guides',
-					items: [
-						// Each item here is one entry in the navigation menu.
-						{ label: 'Example Guide', slug: 'guides/example' },
-					],
-				},
-				{
-					label: 'Reference',
-					autogenerate: { directory: 'reference' },
-				},
+				{ label: 'Overview', autogenerate: { directory: 'overview' } },
+				{ label: 'Tutorials', autogenerate: { directory: 'tutorials' } },
+				{ label: 'How‑to Guides', autogenerate: { directory: 'how-to' } },
+				{ label: 'Reference', autogenerate: { directory: 'reference' } },
+				{ label: 'Explanations', autogenerate: { directory: 'explanations' } },
+				{ label: 'Appendix', autogenerate: { directory: 'appendix' } },
 			],
 		}),
 	],

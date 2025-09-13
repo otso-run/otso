@@ -1,0 +1,20 @@
+---
+title: Architecture at a Glance
+description: High‑level architecture and how pieces fit together.
+---
+
+# Architecture at a Glance
+
+```
+Sources → Otso CLI → SQLite/Postgres
+                   → Enrichment (Defuddle, AI, tags)
+                   → Svelte Dashboard
+                   → Micropub / POSSE / PESOS
+                   → User Site + Webmention
+```
+
+Sections to add:
+- Event model and projections
+- Storage adapters and search
+- Plugin system
+
