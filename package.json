@@ -6,9 +6,13 @@
   "scripts": {
     "dev": "pnpm --filter otso.run dev",
     "build": "pnpm --filter otso.run build",
-    "preview": "pnpm --filter otso.run preview"
+    "preview": "pnpm --filter otso.run preview",
+    "prepare": "husky install"
   },
   "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "husky": "^9.1.7",
     "typescript": "^5.0.0"
   },
   "packageManager": "pnpm@10.16.1"
