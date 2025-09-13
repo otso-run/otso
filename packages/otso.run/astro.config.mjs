@@ -19,8 +19,8 @@ export default defineConfig({
 				{ tag: 'link', attrs: { rel: 'sitemap', href: '/sitemap-index.xml' } },
 			],
 			plugins: [
-				// Enable Algolia DocSearch when env vars are present
-				...(process.env.DOCSEARCH_APP_ID && process.env.DOCSEARCH_API_KEY && process.env.DOCSEARCH_INDEX_NAME
+				// Enable Algolia DocSearch only when explicitly enabled and env vars are present
+				...(process.env.DOCSEARCH_ENABLED === 'true' && process.env.DOCSEARCH_APP_ID && process.env.DOCSEARCH_API_KEY && process.env.DOCSEARCH_INDEX_NAME
 					? [
 						starlightDocSearch({
 							appId: process.env.DOCSEARCH_APP_ID,
