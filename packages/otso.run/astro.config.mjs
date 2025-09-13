@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import starlightDocSearch from '@astrojs/starlight-docsearch';
 import mermaid from 'astro-mermaid';
 
 // https://astro.build/config
@@ -12,6 +13,18 @@ export default defineConfig({
 			title: 'Otso',
 			description: 'Welcome to Otso',
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/otso-run/otso' }],
+			plugins: [
+				// Enable Algolia DocSearch when env vars are present
+				...(process.env.DOCSEARCH_APP_ID && process.env.DOCSEARCH_API_KEY && process.env.DOCSEARCH_INDEX_NAME
+					? [
+						starlightDocSearch({
+							appId: process.env.DOCSEARCH_APP_ID,
+							apiKey: process.env.DOCSEARCH_API_KEY,
+							indexName: process.env.DOCSEARCH_INDEX_NAME,
+						}),
+					]
+					: []),
+			],
 			sidebar: [
 				{ label: 'Overview', autogenerate: { directory: 'overview' } },
 				{ label: 'Tutorials', autogenerate: { directory: 'tutorials' } },
