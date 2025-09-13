@@ -13,7 +13,7 @@ export default defineConfig({
 		mermaid({ autoTheme: true }),
 		starlight({
 			title: 'Otso',
-			description: 'Welcome to Otso',
+			description: 'Local-first IndieWeb toolkit for archiving, syncing, harmonizing, and publishing your trails and streams.',
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/otso-run/otso' }],
 			plugins: [
 				// Enable Algolia DocSearch when env vars are present
