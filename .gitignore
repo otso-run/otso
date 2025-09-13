@@ -87,3 +87,6 @@ public
 # Temporary folders
 tmp/
 temp/
+
+# Allow specific docs assets within package public folders
+!packages/otso.run/public/robots.txt
