@@ -5,6 +5,12 @@ description: How Otso compares to adjacent projects, with gratitude and links fo
 
 Otso lives happily in an ecosystem of IndieWeb and local‑first tools. This page summarizes how Otso differs, when you might choose something else, and how they can play together. We link out with admiration—these projects are great.
 
+## Prominent adjacent projects
+
+- [DogSheep](https://github.com/dogsheep) — a suite of small, sharp CLIs that export your data into per‑source SQLite databases, usually explored with [Datasette](https://datasette.io/). DogSheep’s philosophy—simple CLIs, SQLite everywhere—influences Otso’s import layer and “rebuildable projections.”
+- Chronicle — a CLI‑first personal data framework built around declarative pipelines, append‑only events, and clear staging→canonical flows. Chronicle inspired Otso’s idempotent imports and event/log mindset. (Link welcome—open an issue with your preferred project reference.)
+- [HPI (Human Programming Interface)](https://github.com/karlicoss/HPI) — a Python library that treats your whole “personal data lake” as one interface (messaging, quantified‑self, PKM, logs, etc.). HPI broadened our view of sources beyond social/bookmarks.
+
 ## How Otso differs (at a glance)
 
 - Otso is an event‑driven, local‑first toolkit: import (PESOS), publish (Micropub/POSSE), keep a durable archive (SQLite/Postgres), and build fast projections you can rebuild when needed.
@@ -12,15 +18,15 @@ Otso lives happily in an ecosystem of IndieWeb and local‑first tools. This pag
 
 ## Micropub servers and hosted platforms
 
-- Indiekit ([site](https://indiekit.indieweb.org/)) — a lovely Micropub server you can self‑host. Use it when you want a slim server that speaks Micropub, handles media, and connects to services. Otso adds an event store, import/sync, and projections; you can still publish to an Indiekit‑powered site.
+- [Indiekit](https://indiekit.indieweb.org/) — a lovely Micropub server you can self‑host. Use it when you want a slim server that speaks Micropub, handles media, and connects to services. Otso adds an event store, import/sync, and projections; you can still publish to an Indiekit‑powered site.
 
-- Micro.blog ([site](https://micro.blog/)) — generous hosted IndieWeb blogging with Micropub, feeds, and export. If you want a turnkey home, Micro.blog is a joy. Otso can publish to it and import your archive so you retain your history.
+- [Micro.blog](https://micro.blog/) — generous hosted IndieWeb blogging with Micropub, feeds, and export. If you want a turnkey home, Micro.blog is a joy. Otso can publish to it and import your archive so you retain your history.
 
-- WordPress ([site](https://wordpress.org/)) and Ghost ([site](https://ghost.org/)) — both are fantastic publishing platforms. Keep them as your public site while Otso maintains a local archive, runs imports, and syndicates out. Best of both worlds.
+- [WordPress](https://wordpress.org/) and [Ghost](https://ghost.org/) — both are fantastic publishing platforms. Keep them as your public site while Otso maintains a local archive, runs imports, and syndicates out. Best of both worlds.
 
 ## Local‑first notes and static content
 
-- Obsidian/Markdown ([Obsidian](https://obsidian.md/), Git repos, static sites) — plain files are comforting and powerful. Keep them! Otso can export Markdown projections or read Markdown sources. When you need consistent kinds, imports from APIs, search, or snapshots, Otso’s small database helps without taking that simplicity away.
+- [Obsidian](https://obsidian.md/)/Markdown (Git repos, static sites) — plain files are comforting and powerful. Keep them! Otso can export Markdown projections or read Markdown sources. When you need consistent kinds, imports from APIs, search, or snapshots, Otso’s small database helps without taking that simplicity away.
 
 ## Sources and targets (friends, not competitors)
 
@@ -36,22 +42,22 @@ The focus is idempotent upserts, clear mappings (notes, replies, bookmarks, phot
 
 ## Search and scheduling
 
-- Pagefind ([site](https://pagefind.app/)) — fast, local static search (Starlight’s default). Great for docs.
-- Algolia DocSearch ([site](https://docsearch.algolia.com/)) — hosted search for docs; easy if you’re in the DocSearch program.
-- Vercel Cron ([docs](https://vercel.com/docs/cron-jobs)) and Upstash QStash ([site](https://upstash.com/qstash)) — nice ways to automate sync/retries without heavy infra.
+- [Pagefind](https://pagefind.app/) — fast, local static search (Starlight’s default). Great for docs.
+- [Algolia DocSearch](https://docsearch.algolia.com/) — hosted search for docs; easy if you’re in the DocSearch program.
+- [Vercel Cron](https://vercel.com/docs/cron-jobs) and [Upstash QStash](https://upstash.com/qstash) — nice ways to automate sync/retries without heavy infra.
 
 ## Local‑first sync inspirations
 
-- Litestream ([site](https://litestream.io/)) / LiteFS ([docs](https://fly.io/docs/litefs/)) — pragmatic SQLite replication. Lovely for “SQLite as source of truth.”
-- ElectricSQL ([site](https://electric-sql.com/)) — CRDT‑powered sync (SQLite ⇄ Postgres) for true multi‑device, offline editing. Reach for it when you need collaborative editing beyond simple imports.
-- Datasette ([site](https://datasette.io/)) — a delight for exploring/querying SQLite. Inspires Otso’s “queryable archive” feel.
+- [Litestream](https://litestream.io/) / [LiteFS](https://fly.io/docs/litefs/) — pragmatic SQLite replication. Lovely for “SQLite as source of truth.”
+- [ElectricSQL](https://electric-sql.com/) — CRDT‑powered sync (SQLite ⇄ Postgres) for true multi‑device, offline editing. Reach for it when you need collaborative editing beyond simple imports.
+- [Datasette](https://datasette.io/) — a delight for exploring/querying SQLite. Inspires Otso’s “queryable archive” feel.
 
 ## Standards we share (the glue)
 
-- Micropub ([spec](https://www.w3.org/TR/micropub/)) — write API for your site.
-- IndieAuth ([site](https://indieauth.net/)) — authentication for IndieWeb services.
-- Webmention ([spec](https://www.w3.org/TR/webmention/)) — cross‑site replies/likes.
-- Microformats2 ([site](https://microformats.org/)) — semantic HTML for posts.
+- [Micropub](https://www.w3.org/TR/micropub/) — write API for your site.
+- [IndieAuth](https://indieauth.net/) — authentication for IndieWeb services.
+- [Webmention](https://www.w3.org/TR/webmention/) — cross‑site replies/likes.
+- [Microformats2](https://microformats.org/) — semantic HTML for posts.
 
 Otso speaks these, so you can mix tools without losing ownership.
 
