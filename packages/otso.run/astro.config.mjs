@@ -1,14 +1,13 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
-import rehypeMermaid from 'rehype-mermaid';
+import mermaid from 'astro-mermaid';
 
 // https://astro.build/config
 export default defineConfig({
-	markdown: {
-		rehypePlugins: [rehypeMermaid],
-	},
 	integrations: [
+		// Mermaid must come BEFORE Starlight so markdown is prepared correctly
+		mermaid({ autoTheme: true }),
 		starlight({
 			title: 'Otso',
 			description: 'Welcome to Otso',
