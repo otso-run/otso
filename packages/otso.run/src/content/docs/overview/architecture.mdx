@@ -5,12 +5,20 @@ sidebar:
   order: 4
 ---
 
-```text
-Sources → Otso CLI → SQLite/Postgres
-                   → Enrichment (Defuddle, AI, tags)
-                   → Svelte Dashboard
-                   → Micropub / POSSE / PESOS
-                   → User Site + Webmention
+```mermaid
+graph LR
+  S[Sources<br/>(APIs, archives)] --> C[Otso CLI]
+  C --> DB[(SQLite / Postgres)]
+  C --> E[Enrichment<br/>(Defuddle, AI, tags)]
+  C --> D[Svelte Dashboard]
+  DB --> PR[Projections<br/>(tables, JSON, search)]
+  PR --> UI[Your Site & UI]
+  C --> M[Micropub → Your Site]
+  M --> W[Webmention]
+  C --> P[POSSE → Mastodon / Bluesky / …]
+
+  classDef store fill:#2b5,stroke:#185,stroke-width:1,color:#fff;
+  class DB,PR store;
 ```
 
 ## Core concepts
@@ -27,22 +35,52 @@ Sources → Otso CLI → SQLite/Postgres
 
 ## Import flow (any API or archive)
 
-1. Fetch pages/archives with checkpoints (cursor, ETag, since‑ID).
-2. Normalize into post kinds and media assets.
-3. Upsert into canonical tables with idempotency keys.
-4. Emit events → update projections (lists, search, site content).
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Src as Source API/Archive
+  participant CLI as Otso CLI
+  participant DB as Store (SQLite/Postgres)
+  participant PR as Projections
+
+  Src->>CLI: Fetch page (cursor / ETag / since‑ID)
+  CLI->>CLI: Normalize → kinds + media
+  CLI->>DB: Upsert with idempotency key
+  DB-->>CLI: Insert/Update (or No‑op)
+  CLI->>PR: Emit events → update projections
+```
 
 ## Publish flow (your site is the source)
 
-- Compose locally → publish via Micropub to your site.
-- Optionally POSSE to networks with backlinks to your canonical URL.
-- Webmention ties conversations together across sites.
+```mermaid
+sequenceDiagram
+  autonumber
+  participant You as You
+  participant CLI as Otso CLI
+  participant Site as Your Site (Micropub)
+  participant Net as Networks (POSSE)
+  participant WM as Webmention
+
+  You->>CLI: Compose post
+  CLI->>Site: Micropub create
+  Site-->>CLI: 201 Created + canonical URL
+  CLI->>Net: Cross‑post with canonical link
+  Site->>WM: Send/Receive webmentions
+```
 
 ## Privacy & visibility
 
-- Per‑item visibility: public, unlisted, private, secret.
-- Projections must exclude private/secret payloads; search must never index secrets.
-- Credentials live in env/OS keychain, not in the database or repo.
+```mermaid
+flowchart LR
+  Item[Content item] -->|public| Pub[Public projections & feeds]
+  Item -->|unlisted| Unl[Permalink only<br/>no index/feed]
+  Item -->|private| Priv[Private tools only]
+  Item -->|secret| Sec[Secure projection<br/>or encrypted vault]
+  Idx[[Search Index]] -. excludes .-> Priv
+  Idx -. excludes .-> Sec
+```
+
+- Credentials live in env vars or OS keychain; never in the repo or search indexes.
 
 ## What lives where
 
@@ -51,16 +89,3 @@ Sources → Otso CLI → SQLite/Postgres
 - Site/UI: thin layers over projections; easy to swap or customize.
 
 This separation keeps Otso fast to use, easy to reason about, and safe to extend.
-
-```
-Sources → Otso CLI → SQLite/Postgres
-                   → Enrichment (Defuddle, AI, tags)
-                   → Svelte Dashboard
-                   → Micropub / POSSE / PESOS
-                   → User Site + Webmention
-```
-
-Sections to add:
-- Event model and projections
-- Storage adapters and search
-- Plugin system
