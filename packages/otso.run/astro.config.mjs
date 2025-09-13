@@ -7,7 +7,7 @@ import mermaid from 'astro-mermaid';
 
 // https://astro.build/config
 export default defineConfig({
-	site: process.env.SITE_URL || 'https://otso.run',
+	site: process.env.SITE_URL || 'https://www.otso.run',
 	integrations: [
 		// Mermaid must come BEFORE Starlight so markdown is prepared correctly
 		mermaid({ autoTheme: true }),
