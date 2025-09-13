@@ -3,7 +3,31 @@ title: Roadmap & Philosophy
 description: Near‑term roadmap and guiding principles.
 ---
 
- 
+## Near‑term roadmap
+
+- M1 · Basics: CLI quickstart, SQLite store, Micropub publish to a minimal site, snapshots.
+- M2 · Imports: GitHub, Mastodon, Bluesky, bookmarks/NDJSON; checkpointed pagination; media handling.
+- M3 · POSSE: publish to Mastodon/Bluesky with canonical backlinks; simple retry/backoff.
+- M4 · Webmention: send/receive and show conversations on your site.
+- M5 · Enrichment: Defuddle‑style readability, alt‑text, tags, summaries with provenance.
+- M6 · Search & projections: fast listings and full‑text with strict privacy rules.
+- M7 · Plugins & SDK: stable interfaces, example plugins, testing and docs.
+
+These steps are informed by real platform constraints (e.g., Twitter/X limits, Mastodon app passwords) and a focus on idempotency and safety.
+
+## Guiding principles
+
+- Local‑first by default: keep a copy you control; sync/replicate when useful.
+- Standards‑first: Micropub, IndieAuth, Webmention, Microformats2.
+- Small core, strong edges: plugins add service‑specific logic; the core stays tiny and boring.
+- Idempotent and observable: every operation is safe to retry; events are auditable.
+- Privacy by design: explicit visibility; no secrets in indexes; credentials in env/keychain.
+- Portability: projections you can export (JSON, Markdown) without losing fidelity.
+- Performance: prefer rebuildable projections over complicated live queries.
+
+## What this means for you
+
+You can start small—import a few sources, publish a note—and grow into more. Because Otso is modular and event‑driven, you can swap storage, add plugins, or change your site without repainting your whole house.
 
 This page will outline the short‑term roadmap and the principles guiding Otso’s design.
 

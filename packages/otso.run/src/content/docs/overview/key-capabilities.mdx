@@ -3,7 +3,39 @@ title: Key Capabilities
 description: What you can do with Otso.
 ---
 
- 
+## Compose & publish
+
+Create notes, articles, photos, replies, and more. Publish to your site via Micropub. Cross‑post (POSSE) to networks like Mastodon or Bluesky while keeping your site as the canonical source with proper backlinks.
+
+## Import & archive (PESOS)
+
+Import your existing history from APIs or exports (Twitter/X archive, Mastodon, GitHub, bookmarks). Imports are idempotent and de‑duplicated, so you can re‑run safely. Normalize inputs into consistent “kinds” so everything is queryable.
+
+## Enrich & organize
+
+Run enrichment pipelines to clean web pages (Defuddle‑style readability), generate alt‑text, extract tags, and create summaries. You decide what to keep; Otso records provenance so you can re‑enrich later with better models.
+
+## Webmention & backfeed
+
+Send and receive webmentions for replies, likes, and reposts. Show conversations on your own site and reconcile mentions with imported events to avoid duplicates.
+
+## Data safety first
+
+- Snapshots before big operations; restore if needed.
+- Idempotent commands; dry‑run modes for risky actions.
+- Clear boundaries: never put secrets in public projections or search indexes.
+
+## Search, projections, and speed
+
+Otso treats search and derived views as rebuildable. Keep a small, canonical store (SQLite/Postgres) and generate projections (tables, JSON, full‑text index) tuned for your UI. If something goes wrong, rebuild from the event log.
+
+## Plugins and SDK
+
+Small, focused plugins add new sources or publishers. The core offers utilities for pagination, rate limiting, media handling, and idempotency, so plugins stay tiny.
+
+## Visibility controls
+
+Apply visibility per item: public, unlisted, private, or secret. Projections and publishers enforce these rules so you can import fearlessly and decide later what to share.
 
 - Compose & publish notes, articles, photos, replies, and more.
 - Import archives (PESOS) and syndicate out (POSSE).

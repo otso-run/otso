@@ -3,7 +3,52 @@ title: What Is Otso
 description: A concise introduction to Otso and its core components.
 ---
 
- 
+Otso is a local‑first toolkit that helps you own your content and activity across the web. It lets you publish to your own site, optionally cross‑post elsewhere (POSSE), import archives back into your own store (PESOS), and keep everything searchable and under your control.
+
+## What you get
+
+- A simple, durable store (SQLite or Postgres) that lives with you.
+- A CLI to import, publish, and maintain your archive with idempotent, safe commands.
+- A lightweight web UI for composing content and managing accounts (planned).
+- Clean, standards‑based output for your site (Microformats2, Micropub, Webmention).
+- An event‑driven core and plugin API to extend imports, enrichment, and publishing.
+
+## Components at a glance
+
+- CLI: import archives and APIs; run enrichment; publish; snapshot and restore.
+- Svelte Dashboard: a local web app to compose posts, review imports, manage accounts.
+- Site: your public site that renders posts with Microformats2 and supports Webmention.
+- Plugins: small adapters for new sources (e.g., GitHub, Mastodon, Bluesky) or outputs.
+
+## Supported content types (post “kinds”)
+
+Notes, articles, photos, replies, reposts, likes, bookmarks, highlights, check‑ins, and RSVPs. These map to IndieWeb post kinds and use Microformats2 classes in HTML so the data is portable and machine‑readable.
+
+## Standards used
+
+- Micropub for publishing to your own site.
+- IndieAuth for authentication to your site.
+- Microformats2 for semantic HTML.
+- Webmention for sending/receiving conversations across sites.
+
+## Visibility & privacy
+
+Every item can carry a visibility: `public`, `unlisted`, `private`, or `secret`.
+- Public: appears on your site and feeds.
+- Unlisted: link‑accessible but not in indexes or feeds.
+- Private: visible only to you in tools; never published.
+- Secret: private plus extra handling (redaction, encryption, or separate storage).
+
+Search and projections follow strict rules: do not index private/secret payloads, and never store secrets in search indexes. Keep credentials in env vars or OS keychains.
+
+## Quick mental model
+
+Think of Otso as an append‑only event log plus projections:
+- Sources (APIs/archives) → events (imported, enriched, published).
+- Projections (tables, JSON, indexes) are rebuildable views for speed.
+- The site and API layers are thin; most logic lives in the core and plugins.
+
+This makes it fast, reliable, and easy to extend without losing control of your data.
 
 Otso is a local‑first toolkit to own your content, publish anywhere, and stay the source using open standards like Micropub and Webmention.
 

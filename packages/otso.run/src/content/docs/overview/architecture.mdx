@@ -3,7 +3,52 @@ title: Architecture at a Glance
 description: High‑level architecture and how pieces fit together.
 ---
 
- 
+```text
+Sources → Otso CLI → SQLite/Postgres
+                   → Enrichment (Defuddle, AI, tags)
+                   → Svelte Dashboard
+                   → Micropub / POSSE / PESOS
+                   → User Site + Webmention
+```
+
+## Core concepts
+
+- Events: append‑only records of actions (imported, enriched, published). Easy to audit and replay.
+- Projections: derived tables/JSON/search indexes for fast reads. Rebuildable on demand.
+- Adapters: thin plugins for sources (imports) and publishers (POSSE, Micropub).
+
+## Storage: SQLite or Postgres
+
+- Start with SQLite: fast, simple, great for local use and CLIs.
+- Move to Postgres when you want concurrent writers, external services, or hosted ops.
+- Replication and backup: use Litestream/LiteFS for SQLite; standard tools for Postgres.
+
+## Import flow (any API or archive)
+
+1. Fetch pages/archives with checkpoints (cursor, ETag, since‑ID).
+2. Normalize into post kinds and media assets.
+3. Upsert into canonical tables with idempotency keys.
+4. Emit events → update projections (lists, search, site content).
+
+## Publish flow (your site is the source)
+
+- Compose locally → publish via Micropub to your site.
+- Optionally POSSE to networks with backlinks to your canonical URL.
+- Webmention ties conversations together across sites.
+
+## Privacy & visibility
+
+- Per‑item visibility: public, unlisted, private, secret.
+- Projections must exclude private/secret payloads; search must never index secrets.
+- Credentials live in env/OS keychain, not in the database or repo.
+
+## What lives where
+
+- Core SDK: stable data model, command surface, and utilities (rate limits, media).
+- Plugins: per‑service logic (API/format quirks) and small mapping functions.
+- Site/UI: thin layers over projections; easy to swap or customize.
+
+This separation keeps Otso fast to use, easy to reason about, and safe to extend.
 
 ```
 Sources → Otso CLI → SQLite/Postgres
