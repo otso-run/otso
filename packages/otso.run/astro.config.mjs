@@ -1,11 +1,13 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import sitemap from '@astrojs/sitemap';
 import starlightDocSearch from '@astrojs/starlight-docsearch';
 import mermaid from 'astro-mermaid';
 
 // https://astro.build/config
 export default defineConfig({
+	site: process.env.SITE_URL || 'https://example.com',
 	integrations: [
 		// Mermaid must come BEFORE Starlight so markdown is prepared correctly
 		mermaid({ autoTheme: true }),
@@ -34,5 +36,6 @@ export default defineConfig({
 				{ label: 'Appendix', autogenerate: { directory: 'appendix' } },
 			],
 		}),
+		sitemap(),
 	],
 });
