@@ -1,0 +1,6 @@
+{
+  "buildCommand": "cd packages/otso.run && npm run build",
+  "outputDirectory": "packages/otso.run/dist",
+  "devCommand": "cd packages/otso.run && npm run dev",
+  "installCommand": "npm install && cd packages/otso.run && npm install"
+}
