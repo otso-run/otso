@@ -7,15 +7,15 @@ sidebar:
 
 ```mermaid
 graph LR
-  S[Sources<br/>(APIs, archives)] --> C[Otso CLI]
-  C --> DB[(SQLite / Postgres)]
-  C --> E[Enrichment<br/>(Defuddle, AI, tags)]
-  C --> D[Svelte Dashboard]
-  DB --> PR[Projections<br/>(tables, JSON, search)]
-  PR --> UI[Your Site & UI]
-  C --> M[Micropub → Your Site]
-  M --> W[Webmention]
-  C --> P[POSSE → Mastodon / Bluesky / …]
+  S["Sources (APIs, archives)"] --> C["Otso CLI"]
+  C --> DB[("SQLite / Postgres")]
+  C --> E["Enrichment (Defuddle, AI, tags)"]
+  C --> D["Svelte Dashboard"]
+  DB --> PR["Projections (tables, JSON, search)"]
+  PR --> UI["Your Site & UI"]
+  C --> M["Micropub → Your Site"]
+  M --> W["Webmention"]
+  C --> P["POSSE → Mastodon / Bluesky / …"]
 
   classDef store fill:#2b5,stroke:#185,stroke-width:1,color:#fff;
   class DB,PR store;
