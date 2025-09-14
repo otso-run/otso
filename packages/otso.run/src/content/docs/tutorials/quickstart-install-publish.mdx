@@ -1,11 +1,11 @@
 ---
-title: Quickstart — Install & Publish
-description: Install Otso and publish your first note.
+title: Quickstart — Choose Your Own Adventure
+description: Install Otso then pick what to do next.
 sidebar:
   order: 1
 ---
 
-In this tutorial you’ll install Otso and publish your first note.
+In this tutorial you’ll install Otso and choose the first trail you want to follow.
 
 ## Install prerequisites
 
@@ -25,13 +25,52 @@ otso init mysite
 cd mysite
 ```
 
-## Publish a note
+## Choose your adventure
 
-Create `hello.md` and run:
+After setup, decide where to start:
+
+### Import a source
+
+Bring an existing archive into Otso. For a Twitter/X export:
+
+```bash
+otso import twitter --archive ~/Downloads/twitter
+```
+
+See [Import Twitter/X Archive](/how-to/import-twitter-archives/) for details.
+
+### Sync a source (PESOS)
+
+Keep pulling new posts from a silo you use. To grab your recent Mastodon activity:
+
+```bash
+otso import mastodon --since 7d
+```
+
+More options in [Import from Mastodon](/how-to/import-mastodon/).
+
+### Publish to your blog with Micropub
+
+Connect a Micropub endpoint and send a post:
 
 ```bash
 otso publish hello.md
 ```
 
-Open the generated site to see your post.
+Follow [Publish via Micropub](/how-to/publish-micropub/) to configure IndieAuth and endpoints.
 
+### POSSE to other networks
+
+Cross‑post while keeping your site as the source. For example:
+
+```bash
+# Mastodon
+otso publish mastodon 1234
+
+# Bluesky
+otso publish bluesky 1234
+```
+
+See [Publish to Mastodon](/how-to/publish-mastodon/) and [Publish to Bluesky](/how-to/publish-bluesky/). Threads support follows the same pattern.
+
+Pick another path anytime—Otso lets you roam.
