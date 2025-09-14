@@ -29,47 +29,57 @@ cd mysite
 
 After setup, try one of these common tasks:
 
-### Archive a Twitter export
+### Archive a Twitter/X export and publish to your own site
 
-Save a local copy of your tweets.
+Save a local copy of your tweets then publish them on your site.
 
 ```bash
 otso import twitter --archive ~/Downloads/twitter
+otso publish site
 ```
 
 See [Import Twitter/X Archive](/guides/import-twitter-archives/) for details.
 
-### Sync your Mastodon posts
+### Automatically sync your Mastodon posts, likes, and replies to your website and local storage
 
-Pull in new activity you’ve posted elsewhere.
+Pull in new activity and mirror it to your site.
 
 ```bash
-otso import mastodon --since 7d
+otso import mastodon --include likes,replies --since 7d
+otso publish site
 ```
 
 More options in [Import from Mastodon](/guides/import-mastodon/).
 
-### See your music listening trends together
+### Publish a note on your website and cross-post it to Bluesky and Mastodon
 
-Bring in listens and playlists from Apple Music, Spotify, and Last.fm, then explore them in one collection.
-
-```bash
-otso import apple-music ~/Downloads/apple-music.zip
-otso import spotify --since 30d
-otso import lastfm --since 30d
-otso dedupe resolve
-```
-
-Open the web UI to view unified playlists and listening trends.
-
-### Publish a note and cross-post to Bluesky
-
-Send a post to your site and Bluesky at once.
+Send a post to your site, Bluesky, and Mastodon at once.
 
 ```bash
-otso publish hello.md --to bluesky
+otso publish hello.md --to bluesky,mastodon
 ```
 
-Follow [Publish via Micropub](/guides/publish-micropub/) and [Publish to Bluesky](/guides/publish-bluesky/) to configure IndieAuth and endpoints.
+Follow [Publish via Micropub](/guides/publish-micropub/), [Publish to Bluesky](/guides/publish-bluesky/), and [Publish to Mastodon](/guides/publish-mastodon/) to configure endpoints.
+
+### Tag your bookmarks from Pinboard and Readwise using a local AI model
+
+Import bookmarks then enrich them with tags from a local model.
+
+```bash
+otso import pinboard --since 30d
+otso import readwise --since 30d
+otso enrich tags --model local
+```
+
+See [Import Bookmarks & Enrich with Defuddle](/tutorials/import-bookmarks-defuddle/) for more on cleaning up bookmarks.
+
+### Generate searchable descriptions from your screenshots folder
+
+Pull images from a folder and auto‑caption them for search.
+
+```bash
+otso import folder ~/Pictures/Screenshots
+otso enrich describe --model local
+```
 
 Pick another path anytime—Otso lets you roam.
