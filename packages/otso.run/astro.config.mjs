@@ -46,11 +46,9 @@ export default defineConfig({
 			sidebar: [
                                 { label: 'Overview', autogenerate: { directory: 'overview' } },
                                 { label: 'Tutorials', autogenerate: { directory: 'tutorials' } },
-                                { label: 'How‑to Guides', autogenerate: { directory: 'how-to' } },
                                 { label: 'Guides', autogenerate: { directory: 'guides' } },
                                 { label: 'Reference', autogenerate: { directory: 'reference' } },
                                 { label: 'Explanations', autogenerate: { directory: 'explanations' } },
-                                { label: 'Appendix', autogenerate: { directory: 'appendix' } },
                         ],
                 }),
                 sitemap(),
