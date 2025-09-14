@@ -3,9 +3,25 @@ title: Import from Mastodon
 description: Import your Mastodon timeline or account archive.
 ---
 
- 
+## Using the API
 
-Outline:
-- API vs archive import
-- Mapping to note/reply/repost/like
-- Media handling
+1. Create an access token in Mastodon preferences.
+2. Set `MASTODON_TOKEN` and `MASTODON_INSTANCE` in your environment.
+3. Run `otso import mastodon --since 2024-01-01`.
+
+## Using the archive
+
+Download your account archive, unzip, and run:
+
+```bash
+otso import mastodon --archive ~/Downloads/mastodon-export
+```
+
+## Mapping
+
+- Toots → `note`
+- Replies → `reply` with `inReplyTo` URL.
+- Boosts → `repost`
+- Favorites → `like`
+
+Media attachments are downloaded and referenced as `media` entries.

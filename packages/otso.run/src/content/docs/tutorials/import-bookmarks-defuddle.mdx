@@ -3,9 +3,23 @@ title: Import Bookmarks & Enrich with Defuddle
 description: Bring in bookmarks and clean them up with Defuddle.
 ---
 
- 
+## Import bookmarks
 
-Outline:
-- Import browser export / Pinboard NDJSON
-- Run Defuddle to extract clean content
-- Add tags and alt‑text
+```bash
+otso import bookmarks ~/exports/pinboard.ndjson
+```
+
+## Run Defuddle
+
+```bash
+otso enrich defuddle --query "kind=bookmark and content.html is null"
+```
+
+This pulls article text and metadata.
+
+## Add tags and alt text
+
+```bash
+otso tag add 42 readlater webdev
+```
+

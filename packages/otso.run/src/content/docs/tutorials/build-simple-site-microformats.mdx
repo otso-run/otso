@@ -3,9 +3,26 @@ title: Build a Simple Site with Microformats
 description: Create a basic site that renders posts with mf2 semantics.
 ---
 
- 
+This tutorial uses Astro but the concepts apply to any framework.
 
-Outline:
-- Site scaffold
-- Post templates and microformats2 classes
-- Webmention display basics
+## Scaffold
+
+```bash
+pnpm create astro@latest otso-site
+cd otso-site
+```
+
+## Template
+
+Render a note:
+
+```html
+<article class="h-entry">
+  <p class="p-name e-content">{note.content.text}</p>
+  <a class="u-url" href="{note.url}">Permalink</a>
+</article>
+```
+
+## Webmention display
+
+Fetch mentions from the projections and list them under each post.

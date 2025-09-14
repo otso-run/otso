@@ -3,9 +3,36 @@ title: Plugin Architecture
 description: Plugin manifest, lifecycle, and examples.
 ---
 
- 
+Otso plugins extend imports, publishers, and enrichers. A plugin is a Node module exporting a manifest and hooks.
 
-Outline:
-- Discovery and manifest
-- Minimal plugin interface
-- Examples and testing
+## Discovery and manifest
+
+Plugins are discovered via `package.json` using the `"otso"` field or by loading from the local `plugins/` directory.
+
+Example manifest:
+
+```ts
+export const manifest = {
+  name: 'example',
+  version: '1.0.0',
+  hooks: ['import', 'publish']
+};
+```
+
+## Minimal plugin interface
+
+```ts
+import type { ImportHook } from 'otso';
+
+export const importHook: ImportHook = async (ctx) => {
+  // fetch data and yield events
+};
+```
+
+Hook functions receive a context with logging, storage, and config helpers.
+
+## Examples and testing
+
+- Use `pnpm link` during development.
+- Provide fixtures for APIs and run `pnpm test` inside your plugin repo.
+- See `@otso/import-github` for a real world example.

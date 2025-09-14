@@ -3,9 +3,23 @@ title: Storage Adapters
 description: FS‑Markdown, JSONL, SQLite, and Postgres adapters.
 ---
 
- 
+Otso ships with multiple storage backends.
 
-Outline:
-- Adapter interfaces
-- Trade‑offs per adapter
-- Minimal implementation sketches
+## Adapter interfaces
+
+All adapters expose `put(event)`, `get(id)`, and `query(...)` methods. Custom adapters implement this interface.
+
+## Built-in adapters
+
+- **SQLite** – default local store; supports FTS and transactions.
+- **Postgres** – for multi-user or hosted setups.
+- **FS-Markdown** – writes events as Markdown files for simple sites.
+- **JSONL** – append events to a newline-delimited log.
+
+## Trade-offs
+
+| Adapter | Pros | Cons |
+| ------- | ---- | ---- |
+| SQLite | Simple, fast | Single writer |
+| Postgres | Scales, concurrent | Requires server |
+| FS-Markdown | Human-readable | Limited querying |

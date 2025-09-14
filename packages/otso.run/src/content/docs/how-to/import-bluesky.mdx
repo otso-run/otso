@@ -3,9 +3,23 @@ title: Import from Bluesky
 description: Import from Bluesky with cursor-based pagination.
 ---
 
- 
+Otso’s Bluesky adapter pulls posts via the public API.
 
-Outline:
-- App passwords and auth
-- Cursor pagination and checkpoints
-- Mapping posts and embeds
+## Obtain credentials
+
+1. Create an app password in Bluesky settings.
+2. Set `BSKY_IDENTIFIER` and `BSKY_PASSWORD` in your environment.
+
+## Run the import
+
+```bash
+otso import bluesky --cursor latest.json
+```
+
+The adapter stores the last cursor so subsequent runs resume where they left off.
+
+## Mapping
+
+- Posts become `note` events with AT URIs stored as `external_id`.
+- Images are downloaded and attached as media.
+- Embeds to external URLs become `bookmark` events.

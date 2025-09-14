@@ -3,9 +3,26 @@ title: Schedule Sync (Vercel Cron / Upstash)
 description: Run periodic sync jobs in production.
 ---
 
- 
+## Vercel cron
 
-Outline:
-- Vercel cron setup
-- Optional retries and dedupe with Upstash QStash
-- Storing lastSyncedAt and idempotency
+1. Add a `vercel.json` cron entry:
+
+```json
+{
+  "crons": [{ "path": "/api/sync", "schedule": "0 * * * *" }]
+}
+```
+
+2. Deploy and verify the function triggers hourly.
+
+## Upstash QStash
+
+For retries and dedupe:
+
+1. Create a QStash URL targeting `/api/sync`.
+2. Set the schedule in the Upstash console.
+3. Provide `QSTASH_CURRENT_SIGNING_KEY` environment variables.
+
+## Track progress
+
+Otso records the last `synced_at` for each source so reruns are idempotent.

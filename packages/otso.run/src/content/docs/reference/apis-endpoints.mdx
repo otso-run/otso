@@ -3,9 +3,20 @@ title: APIs & Endpoints
 description: Micropub, Webmention, and internal HTTP endpoints.
 ---
 
- 
+## Micropub
 
-Outline:
-- Micropub (create/update/delete)
-- Webmention (send/receive)
-- Internal service endpoints
+- `POST /micropub` – create or update posts.
+- `GET /micropub?q=syndicate-to` – list POSSE targets.
+- `GET /micropub?q=source&id=…` – fetch stored content.
+
+## Webmention
+
+- `POST /webmention` – receive mentions.
+- Outgoing pings are queued when you publish; run `otso webmention send` to deliver.
+
+## Internal endpoints
+
+When running the Vercel app, Otso exposes:
+
+- `GET /api/health` – health check.
+- `POST /api/sync` – trigger scheduled imports.

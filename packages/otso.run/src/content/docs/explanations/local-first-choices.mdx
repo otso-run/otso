@@ -1,11 +1,24 @@
 ---
 title: Local‑First Choices
-description: SQLite, Litestream/LiteFS, and sync strategies.
+description: Why Otso prefers local databases and offline‑first workflows.
 ---
 
- 
+Running locally keeps your data fast and private.
 
-Outline:
-- SQLite‑first baseline
-- Snapshot/restore and replication
-- When to consider Postgres
+## Benefits
+
+- Works offline and syncs when convenient.
+- Easy to inspect and back up the entire database.
+- No vendor lock‑in.
+
+## Trade‑offs
+
+- You manage backups and updates yourself.
+- Collaborative editing requires extra tooling.
+
+## Practices
+
+- Use Git to version configuration and content.
+- Sync databases with Litestream, LiteFS, or regular snapshots.
+- Export and re‑import when moving between machines.
+

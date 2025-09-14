@@ -3,12 +3,33 @@ title: Quickstart — Install & Publish
 description: Install Otso and publish your first note.
 ---
 
- 
-
 In this tutorial you’ll install Otso and publish your first note.
 
-Steps to add:
-1. Install prerequisites and Otso.
-2. Initialize a workspace.
-3. Publish a note via CLI.
-4. View your site.
+## Install prerequisites
+
+- Node.js 18+
+- pnpm
+
+Then install:
+
+```bash
+pnpm install -g otso
+```
+
+## Initialize workspace
+
+```bash
+otso init mysite
+cd mysite
+```
+
+## Publish a note
+
+Create `hello.md` and run:
+
+```bash
+otso publish hello.md
+```
+
+Open the generated site to see your post.
+

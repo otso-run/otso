@@ -3,9 +3,34 @@ title: Configure Visibility
 description: Use public, unlisted, private, and secret visibility.
 ---
 
- 
+Events carry a `visibility` property to control where content appears.
 
-Outline:
-- Visibility field semantics
-- Defaults and overrides
-- Effects on projections and publishing
+## Visibility options
+
+- `public` – visible in feeds and search.
+- `unlisted` – not listed but accessible via permalink.
+- `private` – kept in local tools only.
+- `secret` – encrypted or restricted projections.
+
+## Set defaults
+
+Define a default in `otsorc.yml`:
+
+```yaml
+defaults:
+  visibility: unlisted
+```
+
+## Override per item
+
+Pass a flag to the CLI when creating or importing:
+
+```bash
+otso publish note.md --visibility private
+```
+
+## Effects
+
+- Only `public` items are syndicated or exposed via APIs.
+- Search indexes exclude `private` and `secret` content.
+- Changing visibility emits a new event, allowing audit of who saw what.

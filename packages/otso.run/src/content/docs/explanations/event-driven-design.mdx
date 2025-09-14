@@ -3,9 +3,21 @@ title: Event‑Driven Design
 description: Benefits, drawbacks, and a practical mental model.
 ---
 
- 
+Otso treats every change as an immutable event. This makes history auditable and projections easy to rebuild.
 
-Outline:
-- Why events work for Otso
-- Drawbacks and mitigations
-- Practical rules of thumb
+## Why events work for Otso
+
+- Simplifies imports from unreliable APIs.
+- Enables replay and migration to new projections.
+- Encourages small, composable plugins.
+
+## Drawbacks and mitigations
+
+- Event logs grow forever → use snapshots or pruning for old events.
+- Higher initial complexity → start with high level helpers like `createEvent`.
+
+## Practical rules of thumb
+
+1. Capture the smallest meaningful fact as an event.
+2. Keep events immutable; derive views elsewhere.
+3. Name projections after the query they serve (e.g., `latest_notes`).

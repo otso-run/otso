@@ -3,9 +3,24 @@ title: Import Twitter/X Archive
 description: Import your Twitter/X export and map to Otso kinds.
 ---
 
- 
+## Prepare the archive
 
-Outline:
-- Export format and parsing
-- Rate limits (if pulling via API)
-- Retweets, replies, and media
+1. Request your archive from Twitter and unzip it.
+2. Locate `data/tweets.js` and remove the JavaScript assignment to get pure JSON.
+
+## Run the import
+
+```bash
+otso import twitter --archive ~/Downloads/twitter
+```
+
+## Mapping
+
+- Tweets → `note`
+- Retweets → `repost`
+- Favorites → `like`
+- Media URLs are resolved and downloaded.
+
+## Rate limits
+
+If using the API, supply `TWITTER_BEARER_TOKEN`. Otso respects rate limit headers and retries with backoff.
