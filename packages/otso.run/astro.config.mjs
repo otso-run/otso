@@ -21,6 +21,7 @@ export default defineConfig({
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/otso-run/otso' }],
 			head: [
 				{ tag: 'link', attrs: { rel: 'sitemap', href: '/sitemap-index.xml' } },
+                                { tag: 'script', attrs: { src: '/_vercel/insights/script.js', defer: true } },
 			],
                         plugins: [
                                 starlightLlmsTxt(),
