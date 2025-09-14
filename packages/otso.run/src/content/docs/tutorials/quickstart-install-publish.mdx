@@ -42,11 +42,20 @@ See [Import Twitter/X Archive](/guides/import-twitter-archives/) for details.
 
 ### Automatically sync your Mastodon posts, likes, and replies to your website and local storage
 
-Pull in new activity and mirror it to your site.
+Run this as a PESOS job—like Bridgy or Echofeed—to pull your Mastodon
+activity into your local archive and mirror it to your site. You can run
+it locally on demand or deploy it as a scheduled job on a serverless or
+cron service.
 
 ```bash
 otso import mastodon --include likes,replies --since 7d
 otso publish site
+```
+
+Deploy a recurring import every 15 minutes on Vercel:
+
+```bash
+otso run --every 15m --on vercel import mastodon --include likes,replies
 ```
 
 More options in [Import from Mastodon](/guides/import-mastodon/).

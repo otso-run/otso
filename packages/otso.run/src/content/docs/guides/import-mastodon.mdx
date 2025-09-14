@@ -19,6 +19,20 @@ Download your account archive, unzip, and run:
 otso import mastodon --archive ~/Downloads/mastodon-export
 ```
 
+## Run as a PESOS job
+
+`otso import mastodon` is idempotent, so you can run it regularly to keep
+your site and local archive up to date. Execute it on demand or deploy it
+to a cron or serverless worker to poll Mastodon on a schedule and sync the
+results back to your local environment.
+
+Use `otso run` to deploy the import on a timer, for example every 15 minutes
+on Vercel:
+
+```bash
+otso run --every 15m --on vercel import mastodon --include likes,replies
+```
+
 ## Mapping
 
 - Toots → `note`
