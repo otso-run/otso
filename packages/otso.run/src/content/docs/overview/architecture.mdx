@@ -6,16 +6,33 @@ sidebar:
 ---
 
 ```mermaid
-graph LR
-  S["Sources (APIs, archives)"] --> C["Otso CLI"]
-  C --> DB[("SQLite / Postgres")]
-  C --> E["Enrichment (Defuddle, AI, tags)"]
-  C --> D["Svelte Dashboard"]
-  DB --> PR["Projections (tables, JSON, search)"]
-  PR --> UI["Your Site & UI"]
-  C --> M["Micropub → Your Site"]
-  M --> W["Webmention"]
-  C --> P["POSSE → Mastodon / Bluesky / …"]
+flowchart LR
+  subgraph Clients
+    CLI
+    Desktop
+    iOS
+  end
+
+  subgraph Otso["Otso core"]
+    SDK["SDK & runtime"]
+    API["HTTP API"]
+    DB[("Event store")]
+    PR["Projections"]
+    Plugins["Plugins"]
+    SDK --> DB
+    DB --> PR
+    SDK --> API
+    Plugins --> SDK
+  end
+
+  CLI --> SDK
+  Desktop --> SDK
+  iOS --> SDK
+
+  Sources["Sources"] -- import --> Plugins
+  SDK -- publish --> Publishers["Publishers / networks"]
+  PR --> Site["Your site & dashboards"]
+  API --> Emulators["Emulators"]
 
   classDef store fill:#2b5,stroke:#185,stroke-width:1,color:#fff;
   class DB,PR store;
