@@ -1,0 +1,112 @@
+---
+title: Interactive CLI
+description: Key features of the Otso CLI's text user interface.
+---
+
+Otso includes an interactive CLI built with a text user interface (TUI) for common tasks:
+
+- Guided imports from other platforms.
+- Duplicate scanning and merge review.
+- Publishing drafts to sites and social networks.
+- Full-text search and tagging.
+- Configuration and plugin management.
+- View building, event tails, data cleanup, and encrypted backups.
+
+## Import
+
+```bash
+$ otso import
+```
+
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│ Otso • Import                                                        │
+│----------------------------------------------------------------------│
+│ Choose a platform (↑↓/Enter, type to search):                        │
+│  ▸ Twitter / X                                                       │
+│    Instagram                                                         │
+│    Google Photos                                                     │
+│    Slack                                                             │
+│    YouTube                                                           │
+│    Reddit                                                            │
+│    GitHub                                                            │
+│    ChatGPT                                                           │
+│    Back                                                              │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+## Dedupe & Merge
+
+```bash
+$ otso dedupe resolve
+```
+
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│ Resolve Duplicates & Merges (↑↓ navigate • Enter open • / search)    │
+│----------------------------------------------------------------------│
+│ 1) [DUP] 0.98  p_9f3  "Sunny day at the lake"   twitter ←→ mastodon  │
+│ 2) [MER] 0.92  p_a1c  Photo + caption + alt text (two variants)      │
+│ 3) [CNF]  —    p_77   Visibility mismatch: public vs private         │
+│----------------------------------------------------------------------│
+│ [A]ccept suggestion  [M]anual merge  [K]eep both  [S]kip  [Q]uit     │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+## Publish
+
+```bash
+$ otso publish
+```
+
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│ Publish • Choose a target                                            │
+│----------------------------------------------------------------------│
+│  ▸ My Site (Micropub, blog view)                                     │
+│    Mastodon (@casey@mastodon.social)                                 │
+│    Bluesky (@casey.bsky.social)                                      │
+│    WordPress (casey.blog)                                            │
+│----------------------------------------------------------------------│
+│ [ Back ]                                                             │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+## Search
+
+```bash
+$ otso search "sunny day lake"
+```
+
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│ Search: "sunny day lake"   [↑↓ to scroll • Enter to open • / refine] │
+│----------------------------------------------------------------------│
+│ 1) p_9f3  note  2025-09-08  "Sunny day at the lake"  tags: life,photo│
+│ 2) p_b42  photo 2025-08-21  lake.jpg  alt:"mountain lake"            │
+│ 3) p_a1c  article 2025-07-30 "Lakes I love"                          │
+│----------------------------------------------------------------------│
+│ [ Open ] [ Tag ] [ Publish ] [ Copy link ] [ Back ]                  │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+## Config
+
+```bash
+$ otso config get
+```
+
+```text
+┌──────────────────────────────────────────────────────────────────────┐
+│ Config                                                               │
+│----------------------------------------------------------------------│
+│ storage.path            ~/.otso                                      │
+│ visibility.default      private                                      │
+│ publish.defaultTargets  [site]                                       │
+│ connect.pollInterval    15m                                          │
+│ web.port                5173                                         │
+│----------------------------------------------------------------------│
+│ [ Edit ] [ Reset ] [ Export ] [ Back ]                               │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
