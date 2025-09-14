@@ -2,7 +2,7 @@
 title: iOS App
 description: Fast Micropub client for quick capture and offline posting.
 sidebar:
-  order: 10
+  order: 4
 ---
 
 The Otso iOS app focuses on one-thumb publishing. It stores drafts locally, syncs in the background, and supports the full Micropub post kinds.
@@ -11,3 +11,11 @@ The Otso iOS app focuses on one-thumb publishing. It stores drafts locally, sync
 - Compose notes, articles, photos, replies, reposts, likes, bookmarks, check-ins, and RSVPs.
 - Local-first engine with SQLite drafts and an outbox queue for retryable sync.
 - Built with Swift and modern SwiftUI patterns.
+
+## Share Sheet extension
+
+A Share Sheet extension lets any app hand content to Otso. From Safari, Photos, or a reader, choose Otso to queue a draft instantly.
+
+- Accepts text, URLs, images, or files.
+- Prompts for post kind before queuing the item.
+- Works with Shortcuts and App Intents for quick capture flows.
