@@ -3,9 +3,32 @@ title: Event Model
 description: Event categories, fields, and before/after policy.
 ---
 
- 
+Events capture every action Otso takes.
 
-Outline:
-- Core categories (post lifecycle, import, sync, publish)
-- Event schema and minimal fields
-- Before/after usage guidelines
+## Categories
+
+- **import** – data pulled from a source.
+- **publish** – sent to external services.
+- **enrich** – tags, alt-text, or other processing.
+
+## Schema
+
+```json
+{
+  "id": "uuid",
+  "kind": "note",
+  "created_at": "2024-01-01T00:00:00Z",
+  "content": {},
+  "visibility": "public",
+  "before": {},
+  "after": {}
+}
+```
+
+`before` and `after` allow reversible operations like updates.
+
+## Guidelines
+
+- Use `before`/`after` only when an action changes data.
+- Keep `content` small; large blobs should live in media tables.
+- Prefer new events over mutation when possible.

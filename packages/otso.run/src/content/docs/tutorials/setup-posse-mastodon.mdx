@@ -3,9 +3,26 @@ title: Set Up POSSE to Mastodon
 description: Connect and syndicate posts to Mastodon.
 ---
 
- 
+## Connect account
 
-Steps to add:
-- Connect account via IndieAuth/OAuth
-- Choose kinds to syndicate
-- Test a post and verify links
+Run:
+
+```bash
+otso login mastodon https://mastodon.social
+```
+
+Follow the OAuth flow and store the token.
+
+## Choose kinds
+
+Edit `otsorc.yml`:
+
+```yaml
+posse:
+  mastodon:
+    kinds: [note, photo]
+```
+
+## Test a post
+
+Publish a note and confirm the Mastodon copy links back to your site.

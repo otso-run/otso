@@ -3,9 +3,34 @@ title: Deployment Recipes
 description: Vercel, self‑hosted, and scheduling.
 ---
 
- 
+Otso runs as a small Node app and does not require special infrastructure. These deployment recipes cover common setups.
 
-Outline:
-- Vercel setup and environment
-- Self‑hosting notes
-- Scheduling with cron/QStash
+## Vercel
+
+1. Fork the repository and push your content.
+2. In the Vercel dashboard, import the repo.
+3. Add environment variables (`OTSO_DB_URL`, `OTSO_SECRET`, etc.).
+4. Enable the schedule function if using QStash.
+5. Trigger a deploy and verify the site responds.
+
+## Self‑hosted
+
+- Install Node and a database on your server.
+- Clone the repo and run `pnpm install && pnpm build`.
+- Use systemd or pm2 to run `pnpm start` as a service.
+- Configure a reverse proxy (Nginx/Caddy) with HTTPS.
+
+## Scheduling
+
+Use cron or QStash to run syncs periodically:
+
+```bash
+# crontab -e
+0 * * * * /usr/local/bin/otso sync >> ~/otso.log 2>&1
+```
+
+On Vercel with Upstash QStash:
+
+1. Create a QStash URL that hits `https://your-app.vercel.app/api/sync`.
+2. Set the schedule (e.g., hourly).
+3. Monitor invocation logs to ensure sync jobs complete.

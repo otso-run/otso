@@ -3,9 +3,24 @@ title: Projections & Search
 description: Policies for projections, indexing, and full‑text search.
 ---
 
- 
+Projections provide fast read models derived from events.
 
-Outline:
-- What to index and what to exclude
-- Search adapters and rebuild strategies
-- Privacy considerations (no secrets in index)
+## What to index
+
+- Public and unlisted items.
+- Selected fields like `content.text`, `tags`, and `published_at`.
+- Exclude secrets and private content.
+
+## Search adapters
+
+Otso ships with a SQLite FTS5 adapter and can emit JSON for external search services.
+
+Rebuild projections when schemas change:
+
+```bash
+otso projections rebuild
+```
+
+## Privacy considerations
+
+Never index API keys or other sensitive values. Visibility rules are enforced when building search indexes.

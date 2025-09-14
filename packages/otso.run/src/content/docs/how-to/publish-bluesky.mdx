@@ -3,9 +3,21 @@ title: Publish to Bluesky
 description: POSSE to Bluesky with app passwords.
 ---
 
- 
+## Setup
 
-Outline:
-- App password setup
-- Post creation and limits
-- Link back to canonical URL
+1. Create an app password in Bluesky.
+2. Set `BSKY_IDENTIFIER` and `BSKY_PASSWORD`.
+
+## Publish a post
+
+```bash
+otso publish bluesky 1234
+```
+
+The command takes an existing event ID and posts it to Bluesky, including a link to the canonical URL.
+
+## Limits
+
+- Posts max 300 characters; longer posts are truncated.
+- Attach up to four images.
+- Bluesky does not yet support alt text via API, so Otso embeds descriptions in the post body.

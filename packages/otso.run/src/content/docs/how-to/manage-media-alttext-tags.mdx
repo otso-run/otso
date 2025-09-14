@@ -3,9 +3,25 @@ title: Manage Media, Alt‑text, and Tags
 description: Handle assets, generate alt‑text, and organize with tags.
 ---
 
- 
+## Media storage
 
-Outline:
-- Media storage and linking
-- Alt‑text generation and editing
-- Tagging strategies
+Imported media is saved under `media/` with hashed filenames. Use `otso media ls` to list attachments.
+
+## Alt‑text
+
+- Auto‑generate descriptions via `otso media alt --auto`.
+- Edit manually:
+
+```bash
+otso media alt IMG_1234.png "Sunset over the lake"
+```
+
+## Tagging
+
+Attach tags when importing or editing:
+
+```bash
+otso tag add 1234 travel photo
+```
+
+Tags feed into projections and search filters.

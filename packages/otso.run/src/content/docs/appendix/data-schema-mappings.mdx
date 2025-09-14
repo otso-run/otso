@@ -3,9 +3,49 @@ title: Data Schema & Mappings
 description: Schema sketches and mappings (e.g., GitHub → mf2).
 ---
 
- 
+Otso keeps the storage model deliberately small. All items are stored as **events** with normalized content and optional media references.
 
-Outline:
-- Minimal schemas
-- Mapping examples (GitHub, Mastodon, Bluesky)
-- Query snippets
+## Minimal schemas
+
+| Table | Key fields | Purpose |
+| ----- | ---------- | ------- |
+| `events` | `id`, `kind`, `source`, `created_at`, `content` | Append‑only log of everything Otso learns or does. |
+| `media` | `id`, `event_id`, `url`, `alt` | References to local or remote media assets. |
+| `tags` | `event_id`, `name` | Free‑form tagging for search and organization. |
+
+## Mapping examples
+
+### GitHub
+
+- `commit` → `entry` with `content.text`, `url`, and `author`.
+- `issue` / `discussion` → `entry` with labels mapped to tags.
+
+### Mastodon
+
+- `status` → `note` with HTML content, media attachments and visibility flag.
+
+### Bluesky
+
+- `post` → `note` with AT URI as `external_id` and facets mapped to tags.
+
+## Query snippets
+
+List the latest public notes:
+
+```sql
+SELECT content->>'text', created_at
+FROM events
+WHERE kind = 'note' AND visibility = 'public'
+ORDER BY created_at DESC
+LIMIT 20;
+```
+
+Fetch media for a given event:
+
+```sql
+SELECT m.url, m.alt
+FROM media m
+JOIN events e ON m.event_id = e.id
+WHERE e.id = $1;
+```
+

@@ -3,9 +3,25 @@ title: Publish via Micropub
 description: Configure Micropub and publish to your site.
 ---
 
- 
+## IndieAuth
 
-Outline:
-- IndieAuth setup
-- Micropub endpoint config
-- Post kinds and media
+1. Ensure your site advertises IndieAuth endpoints.
+2. Run `otso login <micropub-endpoint>` to obtain a token.
+
+## Configure endpoint
+
+Set the token and endpoint in `otsorc.yml`:
+
+```yaml
+micropub:
+  endpoint: https://example.com/micropub
+  token: $INDIEAUTH_TOKEN
+```
+
+## Publish
+
+```bash
+otso publish note.md
+```
+
+Otso sends a Micropub create request with content and media. Responses include the canonical URL which becomes the event’s permalink.

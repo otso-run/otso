@@ -3,9 +3,25 @@ title: Backup & Restore (Snapshots)
 description: Take a snapshot before big operations and restore if needed.
 ---
 
- 
+Snapshots let you rewind if a migration goes wrong.
 
-Outline:
-- Create a snapshot
-- List and inspect snapshots
-- Restore and verify
+## Create a snapshot
+
+```bash
+otso db snapshot before-migration
+```
+
+## List and inspect
+
+```bash
+otso db snapshots
+otso db inspect before-migration
+```
+
+## Restore
+
+```bash
+otso db restore before-migration
+```
+
+Verify the database state and rerun any failed operations.

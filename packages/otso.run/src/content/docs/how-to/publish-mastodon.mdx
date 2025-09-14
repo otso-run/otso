@@ -3,9 +3,29 @@ title: Publish to Mastodon
 description: POSSE to Mastodon while keeping your site as the source.
 ---
 
- 
+## Connect account
 
-Outline:
-- Connect account
-- Configure syndication targets
-- Verify canonical links
+1. Create an application on your Mastodon instance.
+2. Set `MASTODON_TOKEN` and `MASTODON_INSTANCE`.
+
+## Configure syndication
+
+Add a `posse` section in `otsorc.yml`:
+
+```yaml
+posse:
+  mastodon:
+    kinds: [note]
+```
+
+## Publish
+
+```bash
+otso publish mastodon 1234
+```
+
+Otso posts the note and includes a link to the canonical URL.
+
+## Verify
+
+Visit Mastodon to ensure the link points back to your site.

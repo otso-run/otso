@@ -3,9 +3,25 @@ title: Security & Privacy
 description: Managing secrets, storage boundaries, and privacy rules.
 ---
 
- 
+Otso is designed to keep sensitive data local and under your control.
 
-Outline:
-- Secrets management and keychain use
-- Visibility rules (no secrets in search indexes)
-- Backup and encryption recommendations
+## Secrets management
+
+- Load API keys from environment variables or the OS keychain.
+- Never commit secrets to the repository.
+- Use `.env` for local development and hosting dashboards for production.
+
+## Visibility rules
+
+Each event has a `visibility` field:
+
+- `public` – included in feeds and search.
+- `unlisted` – accessible via permalink but excluded from lists.
+- `private` – visible only in local tools.
+- `secret` – stored encrypted; not exported.
+
+## Backup and encryption
+
+- Keep regular database snapshots.
+- For SQLite, pair backups with tools like Litestream or LiteFS.
+- Encrypt archives at rest using `age` or similar tools when storing off‑device.

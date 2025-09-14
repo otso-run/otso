@@ -3,9 +3,38 @@ title: CLI Commands
 description: Command reference with flags and examples.
 ---
 
- 
+The `otso` CLI orchestrates imports, publishing, and maintenance.
 
-Planned sections:
-- Global flags
-- Subcommands and examples
-- Exit codes
+## Global flags
+
+- `--config <file>` – path to config file.
+- `--db <url>` – override database connection.
+- `-v` / `--verbose` – increase logging.
+
+## Subcommands
+
+### `import`
+
+Run a source adapter.
+
+```bash
+otso import github <user>
+```
+
+### `publish`
+
+Publish an existing event.
+
+```bash
+otso publish mastodon 1234
+```
+
+### `webmention send`
+
+Send queued Webmentions.
+
+## Exit codes
+
+- `0` – success
+- `1` – generic error
+- `2` – configuration or validation error

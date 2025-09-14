@@ -1,11 +1,23 @@
 ---
 title: Platform Constraints — Twitter/X
-description: Access tiers, rate limits, and policy constraints.
+description: Dealing with API limits and archive quirks.
 ---
 
- 
+Twitter’s shifting APIs and export formats require extra care.
 
-Outline:
-- API v2 tiers and limits
-- Policy constraints and developer agreement
-- Practical takeaways
+## API limits
+
+- The v2 API enforces tight rate limits; use cursor‑based pagination and retry with backoff.
+- OAuth tokens expire—store refresh tokens securely.
+
+## Archive quirks
+
+- Exports arrive as a ZIP containing a `data/` directory with tweet JSON.
+- Media files may need to be fetched separately; URLs can expire.
+
+## Recommendations
+
+- Prefer the official archive when available; it’s more complete than scraping.
+- Cache responses locally to avoid hitting limits.
+- Map retweets and quoted tweets to `repost` and `mention` kinds respectively.
+

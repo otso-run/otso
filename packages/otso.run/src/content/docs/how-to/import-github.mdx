@@ -3,9 +3,26 @@ title: Import from GitHub
 description: Bring GitHub activity into Otso.
 ---
 
- 
+Track your commits, issues, and stars.
 
-Topics to cover:
-- Token and permissions
-- Fetch events and map to kinds
-- Rate limits and backoff
+## Token and permissions
+
+Create a personal access token with `repo` and `read:user` scopes and store it in `GITHUB_TOKEN`.
+
+## Fetch events
+
+```bash
+otso import github <username>
+```
+
+The importer walks the Events API and upserts each action.
+
+## Mapping
+
+- Push and merge events → `entry` with commit URLs.
+- Issues and PRs → `entry` with labels mapped to tags.
+- Stars → `bookmark` events.
+
+## Rate limits
+
+GitHub allows 5k requests/hour. The importer sleeps and resumes when limits are reached.

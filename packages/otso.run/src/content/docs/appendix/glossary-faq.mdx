@@ -3,6 +3,29 @@ title: Glossary & FAQ
 description: Common terms and answers to frequent questions.
 ---
 
- 
+## Glossary
 
-Populate with key terms and short answers as the docs evolve.
+- **Adapter** – Plugin that knows how to talk to an external service.
+- **Event** – An immutable record representing an import, publish, or enrichment.
+- **Projection** – A derived view built from events for fast reads.
+- **POSSE** – Publish on your Own Site, Syndicate Elsewhere.
+- **PESOS** – Publish Elsewhere, Syndicate to Own Site.
+
+## FAQ
+
+### Is Otso open source?
+
+Yes. The code is available under the MIT license.
+
+### Do I need a server?
+
+No. You can run Otso locally with SQLite and deploy later if desired.
+
+### Can I mix SQLite and Postgres?
+
+Not in the same project, but you can migrate using the export/import commands.
+
+### How are credentials stored?
+
+Secrets live in environment variables or the OS keychain. They are never committed to your repo.
+
