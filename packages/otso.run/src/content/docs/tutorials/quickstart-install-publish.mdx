@@ -1,11 +1,11 @@
 ---
-title: Quickstart — Choose Your Own Adventure
-description: Install Otso then pick what to do next.
+title: Quickstart — Archive, Sync, Harmonize, and Publish
+description: Install Otso then try a real‑world task.
 sidebar:
   order: 1
 ---
 
-In this tutorial you’ll install Otso and choose the first trail you want to follow.
+In this tutorial you'll install Otso and pick a simple place to begin.
 
 ## Install prerequisites
 
@@ -25,52 +25,61 @@ otso init mysite
 cd mysite
 ```
 
-## Choose your adventure
+## Choose your path
 
-After setup, decide where to start:
+After setup, try one of these common tasks:
 
-### Import a source
+### Archive a Twitter/X export and publish to your own site
 
-Bring an existing archive into Otso. For a Twitter/X export:
+Save a local copy of your tweets then publish them on your site.
 
 ```bash
 otso import twitter --archive ~/Downloads/twitter
+otso publish site
 ```
 
 See [Import Twitter/X Archive](/guides/import-twitter-archives/) for details.
 
-### Sync a source (PESOS)
+### Automatically sync your Mastodon posts, likes, and replies to your website and local storage
 
-Keep pulling new posts from a silo you use. To grab your recent Mastodon activity:
+Pull in new activity and mirror it to your site.
 
 ```bash
-otso import mastodon --since 7d
+otso import mastodon --include likes,replies --since 7d
+otso publish site
 ```
 
 More options in [Import from Mastodon](/guides/import-mastodon/).
 
-### Publish to your blog with Micropub
+### Publish a note on your website and cross-post it to Bluesky and Mastodon
 
-Connect a Micropub endpoint and send a post:
-
-```bash
-otso publish hello.md
-```
-
-Follow [Publish via Micropub](/guides/publish-micropub/) to configure IndieAuth and endpoints.
-
-### POSSE to other networks
-
-Cross‑post while keeping your site as the source. For example:
+Send a post to your site, Bluesky, and Mastodon at once.
 
 ```bash
-# Mastodon
-otso publish mastodon 1234
-
-# Bluesky
-otso publish bluesky 1234
+otso publish hello.md --to bluesky,mastodon
 ```
 
-See [Publish to Mastodon](/guides/publish-mastodon/) and [Publish to Bluesky](/guides/publish-bluesky/). Threads support follows the same pattern.
+Follow [Publish via Micropub](/guides/publish-micropub/), [Publish to Bluesky](/guides/publish-bluesky/), and [Publish to Mastodon](/guides/publish-mastodon/) to configure endpoints.
+
+### Tag your bookmarks from Pinboard and Readwise using a local AI model
+
+Import bookmarks then enrich them with tags from a local model.
+
+```bash
+otso import pinboard --since 30d
+otso import readwise --since 30d
+otso enrich tags --model local
+```
+
+See [Import Bookmarks & Enrich with Defuddle](/tutorials/import-bookmarks-defuddle/) for more on cleaning up bookmarks.
+
+### Generate searchable descriptions from your screenshots folder
+
+Pull images from a folder and auto‑caption them for search.
+
+```bash
+otso import folder ~/Pictures/Screenshots
+otso enrich describe --model local
+```
 
 Pick another path anytime—Otso lets you roam.
