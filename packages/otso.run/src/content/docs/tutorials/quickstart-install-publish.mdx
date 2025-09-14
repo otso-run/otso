@@ -1,11 +1,11 @@
 ---
-title: Quickstart — Choose Your Own Adventure
-description: Install Otso then pick what to do next.
+title: Quickstart — Archive, Sync, Harmonize, and Publish
+description: Install Otso then try a real‑world task.
 sidebar:
   order: 1
 ---
 
-In this tutorial you’ll install Otso and choose the first trail you want to follow.
+In this tutorial you'll install Otso and pick a simple place to begin.
 
 ## Install prerequisites
 
@@ -25,13 +25,13 @@ otso init mysite
 cd mysite
 ```
 
-## Choose your adventure
+## Choose your path
 
-After setup, decide where to start:
+After setup, try one of these common tasks:
 
-### Import a source
+### Archive a Twitter export
 
-Bring an existing archive into Otso. For a Twitter/X export:
+Save a local copy of your tweets.
 
 ```bash
 otso import twitter --archive ~/Downloads/twitter
@@ -39,9 +39,9 @@ otso import twitter --archive ~/Downloads/twitter
 
 See [Import Twitter/X Archive](/guides/import-twitter-archives/) for details.
 
-### Sync a source (PESOS)
+### Sync your Mastodon posts
 
-Keep pulling new posts from a silo you use. To grab your recent Mastodon activity:
+Pull in new activity you’ve posted elsewhere.
 
 ```bash
 otso import mastodon --since 7d
@@ -49,28 +49,27 @@ otso import mastodon --since 7d
 
 More options in [Import from Mastodon](/guides/import-mastodon/).
 
-### Publish to your blog with Micropub
+### See your music listening trends together
 
-Connect a Micropub endpoint and send a post:
-
-```bash
-otso publish hello.md
-```
-
-Follow [Publish via Micropub](/guides/publish-micropub/) to configure IndieAuth and endpoints.
-
-### POSSE to other networks
-
-Cross‑post while keeping your site as the source. For example:
+Bring in listens and playlists from Apple Music, Spotify, and Last.fm, then explore them in one collection.
 
 ```bash
-# Mastodon
-otso publish mastodon 1234
-
-# Bluesky
-otso publish bluesky 1234
+otso import apple-music ~/Downloads/apple-music.zip
+otso import spotify --since 30d
+otso import lastfm --since 30d
+otso dedupe resolve
 ```
 
-See [Publish to Mastodon](/guides/publish-mastodon/) and [Publish to Bluesky](/guides/publish-bluesky/). Threads support follows the same pattern.
+Open the web UI to view unified playlists and listening trends.
+
+### Publish a note and cross-post to Bluesky
+
+Send a post to your site and Bluesky at once.
+
+```bash
+otso publish hello.md --to bluesky
+```
+
+Follow [Publish via Micropub](/guides/publish-micropub/) and [Publish to Bluesky](/guides/publish-bluesky/) to configure IndieAuth and endpoints.
 
 Pick another path anytime—Otso lets you roam.
