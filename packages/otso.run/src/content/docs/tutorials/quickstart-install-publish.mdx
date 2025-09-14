@@ -75,11 +75,48 @@ See [Import Bookmarks & Enrich with Defuddle](/tutorials/import-bookmarks-defudd
 
 ### Generate searchable descriptions from your screenshots folder
 
-Pull images from a folder and auto‑caption them for search.
+Pull images from a folder, auto‑caption them, then search by description.
 
 ```bash
 otso import folder ~/Pictures/Screenshots
 otso enrich describe --model local
+```
+
+Search later and see matches highlighted:
+
+```bash
+otso search "concert ticket" --images
+```
+
+> ~/Pictures/Screenshots/live-show.png — "July 4 **concert ticket**"
+
+### Visualize your music listening across sites
+
+Combine listening history from multiple services into one timeline.
+
+```bash
+otso import lastfm --since 30d
+otso import spotify --since 30d
+otso view music-timeline
+```
+
+### Ask questions of your Notion docs using a local AI model
+
+Pull your Notion pages and ask them questions offline.
+
+```bash
+otso import notion --database my-notes
+otso ask "When is the next team meeting?" --model local
+```
+
+### Migrate Pinboard bookmarks to Raindrop with a searchable local copy
+
+Move your links to Raindrop while keeping everything indexed locally.
+
+```bash
+otso import pinboard --all
+otso export raindrop
+otso search "pasta recipe" --bookmarks
 ```
 
 Pick another path anytime—Otso lets you roam.
