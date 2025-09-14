@@ -4,6 +4,10 @@ import starlight from '@astrojs/starlight';
 import sitemap from '@astrojs/sitemap';
 import starlightDocSearch from '@astrojs/starlight-docsearch';
 import mermaid from 'astro-mermaid';
+import starlightLlmsTxt from 'starlight-llms-txt';
+import starlightAutoSidebar from 'starlight-auto-sidebar';
+import starlightLinksValidator from 'starlight-links-validator';
+import starlightContextualMenu from 'starlight-contextual-menu';
 
 // https://astro.build/config
 export default defineConfig({
@@ -18,18 +22,27 @@ export default defineConfig({
 			head: [
 				{ tag: 'link', attrs: { rel: 'sitemap', href: '/sitemap-index.xml' } },
 			],
-			plugins: [
-				// Enable Algolia DocSearch only when explicitly enabled and env vars are present
-				...(process.env.DOCSEARCH_ENABLED === 'true' && process.env.DOCSEARCH_APP_ID && process.env.DOCSEARCH_API_KEY && process.env.DOCSEARCH_INDEX_NAME
-					? [
-						starlightDocSearch({
-							appId: process.env.DOCSEARCH_APP_ID,
-							apiKey: process.env.DOCSEARCH_API_KEY,
-							indexName: process.env.DOCSEARCH_INDEX_NAME,
-						}),
-					]
-					: []),
-			],
+                        plugins: [
+                                starlightLlmsTxt(),
+                                starlightAutoSidebar(),
+                                starlightLinksValidator(),
+                                starlightContextualMenu({
+                                        actions: ['copy', 'view', 'chatgpt', 'claude'],
+                                }),
+                                // Enable Algolia DocSearch only when explicitly enabled and env vars are present
+                                ...(process.env.DOCSEARCH_ENABLED === 'true' &&
+                                process.env.DOCSEARCH_APP_ID &&
+                                process.env.DOCSEARCH_API_KEY &&
+                                process.env.DOCSEARCH_INDEX_NAME
+                                        ? [
+                                                starlightDocSearch({
+                                                        appId: process.env.DOCSEARCH_APP_ID,
+                                                        apiKey: process.env.DOCSEARCH_API_KEY,
+                                                        indexName: process.env.DOCSEARCH_INDEX_NAME,
+                                                }),
+                                        ]
+                                        : []),
+                        ],
 			sidebar: [
                                 { label: 'Overview', autogenerate: { directory: 'overview' } },
                                 { label: 'Tutorials', autogenerate: { directory: 'tutorials' } },
