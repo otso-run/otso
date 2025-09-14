@@ -1,0 +1,12 @@
+---
+title: Otso SDK
+description: Composable core and plugin API for building on top of Otso.
+sidebar:
+  order: 8
+---
+
+Otso's heart is a small TypeScript SDK that exposes the event log, domain models, and typed commands. Interfaces like the CLI, web app, or iOS app all consume the same package, while plugins register storage adapters, importers, publishers, and enrichers.
+
+- Tiny core with commands such as `createPost`, `import`, and `publish`.
+- Typed event bus so plugins react to changes instead of poking internals.
+- Shared across surfaces: CLI, Svelte app, iOS, or future desktop builds.

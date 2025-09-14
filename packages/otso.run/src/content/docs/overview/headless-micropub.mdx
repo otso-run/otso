@@ -1,0 +1,13 @@
+---
+title: Headless Micropub & Extension API
+description: Exposing Otso's commands and plugin hooks without the UI.
+sidebar:
+  order: 13
+---
+
+Beyond the bundled apps, Otso exposes its Micropub implementation and plugin system as headless services.
+
+- `@otso/protocol-micropub` provides a Micropub client and optional server.
+- Plugins register capabilities such as storage, publishers, or enrichers.
+- Capabilities are discoverable so custom interfaces can adapt dynamically.
+- Build custom extensions without touching the core.
