@@ -1,0 +1,18 @@
+---
+title: Protocol Plugins
+description: Standard protocol adapters like Micropub, Webmention, ActivityPub, and more.
+sidebar:
+  order: 9
+---
+
+Otso treats network protocols as pluggable modules. A protocol plugin defines how the core speaks a standard like Micropub or Webmention, and multiple publishers can build on top of it.
+
+Current and planned protocol plugins include:
+
+- Micropub client and optional server.
+- Webmention send/receive.
+- WebSub for push feeds.
+- ActivityPub bridge for the Fediverse.
+- Experimental ideas such as AT Protocol, Nostr, or IPFS.
+
+Protocol plugins power publishers: an ActivityPub plugin can serve both Mastodon importers and posting adapters.
