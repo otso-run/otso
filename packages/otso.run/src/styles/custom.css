@@ -1,0 +1,16 @@
+@layer starlight.components {
+        .card-grid .card .body a {
+                text-decoration: none;
+                border-radius: 0.25rem;
+        }
+
+        .card-grid .card .body a:hover,
+        .card-grid .card .body a:focus-visible {
+                text-decoration: none;
+        }
+
+        .card-grid .card .body a:focus-visible {
+                outline: 2px solid var(--sl-color-white);
+                outline-offset: 0.125rem;
+        }
+}

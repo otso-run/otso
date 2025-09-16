@@ -44,13 +44,14 @@ export default defineConfig({
                                         ]
                                         : []),
                         ],
-			sidebar: [
+                        sidebar: [
                                 { label: 'Overview', autogenerate: { directory: 'overview' } },
                                 { label: 'Tutorials', autogenerate: { directory: 'tutorials' } },
                                 { label: 'Guides', autogenerate: { directory: 'guides' } },
                                 { label: 'Reference', autogenerate: { directory: 'reference' } },
                                 { label: 'Explanations', autogenerate: { directory: 'explanations' } },
                         ],
+                        customCss: ['/src/styles/custom.css'],
                 }),
                 sitemap(),
 	],
