@@ -55,7 +55,7 @@ When creating this spec from a user prompt:
 ## User Scenarios & Testing *(mandatory)*
 
 ### Primary User Story
-As an IndieWeb content creator, I want to import, manage, and publish my content from various sources to my own website and syndicate to other platforms, so that I maintain ownership of my data while participating in social networks and the broader web.
+As an IndieWeb content creator using iOS devices, I want to import, manage, and publish my content from various sources to my own website and syndicate to other platforms, so that I maintain ownership of my data while participating in social networks and the broader web.
 
 ### Acceptance Scenarios
 1. **Given** a user has archives from Twitter/X and other platforms, **When** they import these archives using the CLI, **Then** all content is stored locally with proper metadata and media preserved
@@ -77,7 +77,7 @@ As an IndieWeb content creator, I want to import, manage, and publish my content
 - **FR-001**: System MUST provide command-line interface for importing content from various sources (Twitter/X archives, Mastodon API, Bluesky API, GitHub activity, bookmarks)
 - **FR-002**: System MUST store all content locally in a database with full ownership by the user
 - **FR-003**: System MUST support multiple content types (notes, articles, photos, replies, reposts, likes, bookmarks, highlights, check-ins, RSVPs)
-- **FR-004**: System MUST provide web dashboard for composing posts and managing accounts accessible locally
+- **FR-004**: System MUST provide native iOS app (primary target) with macOS compatibility using Apple's standard UI components (TabView, NavigationStack, system materials) with only system/semantic colors for composing posts and managing accounts
 - **FR-005**: System MUST support publishing to user's own website via Micropub protocol
 - **FR-006**: System MUST enable cross-posting to external platforms while maintaining original post references
 - **FR-007**: System MUST implement privacy controls with public, unlisted, private, and secret visibility levels
@@ -89,9 +89,11 @@ As an IndieWeb content creator, I want to import, manage, and publish my content
 - **FR-013**: System MUST implement Webmention protocol for sending and receiving web mentions
 - **FR-014**: System MUST provide backup and restore capabilities for the entire local database
 - **FR-015**: System MUST support content enrichment including tag extraction and media analysis
-- **FR-016**: System MUST handle [NEEDS CLARIFICATION: specific performance targets - how many posts per second for import? response time requirements?]
-- **FR-017**: System MUST retain user data for [NEEDS CLARIFICATION: retention policy - indefinite local storage? any automatic cleanup?]
-- **FR-018**: System MUST support [NEEDS CLARIFICATION: concurrent users - single user local system or multi-user capability?]
+- **FR-016**: System MUST research Apple's Human Interface Guidelines and relevant documentation before implementing each UI component or interaction pattern
+- **FR-017**: System MUST use only Apple's built-in view modifiers and styles without creating custom styling extensions or wrappers
+- **FR-018**: System MUST handle [NEEDS CLARIFICATION: specific performance targets - how many posts per second for import? response time requirements?]
+- **FR-019**: System MUST retain user data for [NEEDS CLARIFICATION: retention policy - indefinite local storage? any automatic cleanup?]
+- **FR-020**: System MUST support [NEEDS CLARIFICATION: concurrent users - single user local system or multi-user capability?]
 
 ### Key Entities *(include if feature involves data)*
 - **Account**: Represents an IndieAuth-enabled account with credentials, endpoints, and configuration
@@ -102,6 +104,17 @@ As an IndieWeb content creator, I want to import, manage, and publish my content
 - **Queue**: Offline queue for pending operations when connectivity is unavailable
 - **Event**: Append-only event log entry for all system actions and state changes
 - **Plugin**: Extension module for additional sources, targets, or processors
+
+---
+
+## Clarifications
+
+### Session 2025-09-27
+- Q: What should be the primary approach for UI components? → A: Always use native Apple UI components with system defaults
+- Q: Should implementation tasks require researching Apple documentation before coding UI features? → A: Yes, always research Apple docs first for each UI component
+- Q: When should custom colors be defined vs using system colors? → A: Never use custom colors, only system/semantic colors
+- Q: Should developers create custom view modifiers or style extensions? → A: No custom modifiers, use only Apple's built-in modifiers directly
+- Q: Which platform should be the primary development target? → A: iOS first, then adapt for macOS
 
 ---
 
