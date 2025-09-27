@@ -1,0 +1,197 @@
+openapi: 3.0.0
+info:
+  title: IndieAuth API Contract for Otso iOS
+  version: 1.0.0
+  description: IndieAuth authentication flow for the Otso iOS app
+
+servers:
+  - url: '{authorizationEndpoint}'
+    variables:
+      authorizationEndpoint:
+        default: https://indieauth.com/auth
+        description: Authorization endpoint discovered from user's URL
+
+paths:
+  /auth:
+    get:
+      summary: Initiate authorization flow
+      parameters:
+        - name: response_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [code]
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+            example: https://otso.run
+        - name: redirect_uri
+          in: query
+          required: true
+          schema:
+            type: string
+            example: otso://auth/callback
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: code_challenge
+          in: query
+          required: true
+          schema:
+            type: string
+          description: PKCE code challenge
+        - name: code_challenge_method
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [S256]
+        - name: scope
+          in: query
+          required: false
+          schema:
+            type: string
+            example: create update delete media
+        - name: me
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uri
+      responses:
+        '302':
+          description: Redirect to authorization server
+          headers:
+            Location:
+              schema:
+                type: string
+
+  /token:
+    post:
+      summary: Exchange authorization code for access token
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                grant_type:
+                  type: string
+                  enum: [authorization_code, refresh_token]
+                code:
+                  type: string
+                  description: Authorization code (for grant_type=authorization_code)
+                client_id:
+                  type: string
+                  format: uri
+                redirect_uri:
+                  type: string
+                code_verifier:
+                  type: string
+                  description: PKCE code verifier
+                refresh_token:
+                  type: string
+                  description: Refresh token (for grant_type=refresh_token)
+              required:
+                - grant_type
+                - client_id
+      responses:
+        '200':
+          description: Token response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenError'
+
+  /userinfo:
+    get:
+      summary: Get user information
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserInfo'
+        '401':
+          description: Unauthorized
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  schemas:
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          example: Bearer
+        scope:
+          type: string
+          example: create update delete media
+        expires_in:
+          type: integer
+          example: 3600
+        refresh_token:
+          type: string
+        me:
+          type: string
+          format: uri
+          example: https://example.com/
+      required:
+        - access_token
+        - token_type
+        - scope
+        - me
+
+    TokenError:
+      type: object
+      properties:
+        error:
+          type: string
+          enum:
+            - invalid_request
+            - invalid_client
+            - invalid_grant
+            - unauthorized_client
+            - unsupported_grant_type
+            - invalid_scope
+        error_description:
+          type: string
+
+    UserInfo:
+      type: object
+      properties:
+        me:
+          type: string
+          format: uri
+        name:
+          type: string
+        photo:
+          type: string
+          format: uri
+        email:
+          type: string
+          format: email
+      required:
+        - me
