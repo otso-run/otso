@@ -14,15 +14,28 @@ import AppKit
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var items: [Item]
-    @State private var selectedTab: AppTab = .posts
+    @State private var selectedTab: AppTab = .compose
     @State private var showingComposer = false
+    @State private var selectedPostType: IndiePostType = .note
 
     var body: some View {
         TabView(selection: $selectedTab) {
             // Compose Tab with Drafts navigation
             Tab("Compose", systemImage: "square.and.pencil", value: AppTab.compose) {
-                ComposeTabView()
+                ComposeTabView(selectedPostType: $selectedPostType)
             }
+            #if os(iOS)
+            .contextMenu {
+                ForEach(IndiePostType.allCases, id: \.self) { type in
+                    Button {
+                        selectedPostType = type
+                        selectedTab = .compose
+                    } label: {
+                        Label(type.displayName, systemImage: type.icon)
+                    }
+                }
+            }
+            #endif
 
             // Posts Tab
             Tab("Posts", systemImage: "text.badge.checkmark", value: AppTab.posts) {
@@ -85,80 +98,350 @@ enum AppTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum IndiePostType: String, CaseIterable {
+    case note
+    case article
+    case photo
+    case bookmark
+    case reply
+    case repost
+    case like
+    case video
+
+    var displayName: String {
+        switch self {
+        case .note: return "Note"
+        case .article: return "Article"
+        case .photo: return "Photo"
+        case .bookmark: return "Bookmark"
+        case .reply: return "Reply"
+        case .repost: return "Repost"
+        case .like: return "Like"
+        case .video: return "Video"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .note: return "note.text"
+        case .article: return "doc.text"
+        case .photo: return "photo"
+        case .bookmark: return "bookmark"
+        case .reply: return "arrowshape.turn.up.left"
+        case .repost: return "arrow.2.squarepath"
+        case .like: return "heart"
+        case .video: return "play.rectangle"
+        }
+    }
+}
+
 struct ComposeTabView: View {
+    @Binding var selectedPostType: IndiePostType
+    @State private var showingDrafts = false
+    @State private var selectedDraft: String?
+    @State private var titleText = ""
+    @State private var bodyText = ""
+
     var body: some View {
         NavigationStack {
-            PlaceholderView(
-                title: "New Post",
-                subtitle: "What's on your mind?",
-                icon: "square.and.pencil"
+            ComposeContentView(
+                postType: selectedPostType,
+                titleText: $titleText,
+                bodyText: $bodyText
             )
-            .navigationTitle("Compose")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    NavigationLink(destination: DraftsListView()) {
+                    Button {
+                        showingDrafts = true
+                    } label: {
+                        Image(systemName: "tray")
+                    }
+                }
+
+                ToolbarItem(placement: .principal) {
+                    Menu {
+                        ForEach(IndiePostType.allCases, id: \.self) { type in
+                            Button {
+                                selectedPostType = type
+                            } label: {
+                                Label(type.displayName, systemImage: type.icon)
+                            }
+                        }
+                    } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 16, weight: .semibold))
-                            Text("Drafts")
+                            Text(selectedPostType.displayName)
+                                .font(.headline)
+                            Image(systemName: "chevron.down")
+                                .font(.caption)
                         }
                     }
                 }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        // Publish action
+                    } label: {
+                        Image(systemName: "paperplane")
+                    }
+                }
+            }
+            .onChange(of: selectedDraft) { _, newDraft in
+                if let draft = newDraft {
+                    // Load the draft content
+                    titleText = ""
+                    bodyText = "Content of \(draft)"
+                    selectedDraft = nil
+                }
+            }
+        }
+        .sheet(isPresented: $showingDrafts) {
+            NavigationStack {
+                DraftsListView(selectedDraft: $selectedDraft)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("Done") {
+                                showingDrafts = false
+                            }
+                        }
+                    }
             }
         }
     }
 }
 
-struct DraftsListView: View {
-    @State private var drafts: [String] = ["Draft 1", "Draft 2", "Draft 3"] // Mock data for demonstration
+struct ComposeContentView: View {
+    let postType: IndiePostType
+    @Binding var titleText: String
+    @Binding var bodyText: String
+    @State private var urlText = ""
+    @FocusState private var isTextEditorFocused: Bool
 
     var body: some View {
-        List {
-            if !drafts.isEmpty {
-                Section {
-                    ForEach(drafts, id: \.self) { draft in
-                        NavigationLink {
-                            PlaceholderView(
-                                title: "Edit: \(draft)",
-                                subtitle: "Continue editing your draft",
-                                icon: "doc.text"
-                            )
-                            .navigationTitle(draft)
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(draft)
-                                        .font(.headline)
-                                    Text("Last edited 2 hours ago")
-                                        .font(.caption)
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Main content area based on post type
+                    switch postType {
+                    case .note:
+                        TextEditor(text: $bodyText)
+                            .textEditorStyle(.plain)
+                            .scrollContentBackground(.hidden)
+                            .focused($isTextEditorFocused)
+                            .onAppear {
+                                isTextEditorFocused = true
+                            }
+                            .overlay(alignment: .topLeading) {
+                                if bodyText.isEmpty {
+                                    Text("Start writing...")
+                                        .foregroundStyle(.tertiary)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 8)
+                                        .allowsHitTesting(false)
+                                }
+                            }
+
+                    case .article:
+                        VStack(alignment: .leading, spacing: 8) {
+                            TextField("Title", text: $titleText, axis: .vertical)
+                                .textFieldStyle(.plain)
+                                .font(.title2.weight(.semibold))
+
+                            TextEditor(text: $bodyText)
+                                .textEditorStyle(.plain)
+                                .scrollContentBackground(.hidden)
+                                .focused($isTextEditorFocused)
+                                .overlay(alignment: .topLeading) {
+                                    if bodyText.isEmpty {
+                                        Text("Start writing...")
+                                            .foregroundStyle(.tertiary)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 8)
+                                            .allowsHitTesting(false)
+                                    }
+                                }
+                        }
+
+                    case .photo, .video:
+                        VStack(alignment: .leading, spacing: 16) {
+                            Button {
+                                // Show media picker
+                            } label: {
+                                VStack(spacing: 12) {
+                                    Image(systemName: postType == .photo ? "photo" : "video")
+                                        .font(.largeTitle)
+                                        .foregroundStyle(.secondary)
+                                    Text("Tap to add \(postType.displayName.lowercased())")
                                         .foregroundStyle(.secondary)
                                 }
-                                Spacer()
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 200)
+                                .background(Color(uiColor: .systemGray6), in: RoundedRectangle(cornerRadius: 12))
                             }
-                            .padding(.vertical, 4)
+                            .buttonStyle(.plain)
+
+                            TextEditor(text: $bodyText)
+                                .textEditorStyle(.plain)
+                                .scrollContentBackground(.hidden)
+                                .focused($isTextEditorFocused)
+                                .overlay(alignment: .topLeading) {
+                                    if bodyText.isEmpty {
+                                        Text("Add a caption...")
+                                            .foregroundStyle(.tertiary)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 8)
+                                            .allowsHitTesting(false)
+                                    }
+                                }
+                        }
+
+                    case .bookmark, .reply, .repost, .like:
+                        VStack(alignment: .leading, spacing: 8) {
+                            TextField(getURLPlaceholder(for: postType), text: $urlText, axis: .vertical)
+                                .textFieldStyle(.plain)
+                                .foregroundStyle(.link)
+
+                            if postType == .bookmark {
+                                TextField("Title (optional)", text: $titleText, axis: .vertical)
+                                    .textFieldStyle(.plain)
+                                    .font(.headline)
+                            }
+
+                            TextEditor(text: $bodyText)
+                                .textEditorStyle(.plain)
+                                .scrollContentBackground(.hidden)
+                                .focused($isTextEditorFocused)
+                                .overlay(alignment: .topLeading) {
+                                    if bodyText.isEmpty {
+                                        Text(getBodyPlaceholder(for: postType))
+                                            .foregroundStyle(.tertiary)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 8)
+                                            .allowsHitTesting(false)
+                                    }
+                                }
                         }
                     }
-                } header: {
-                    Text("Your Drafts")
                 }
+                .padding(.horizontal)
+                .padding(.top)
             }
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Button(action: {}) {
+                        Image(systemName: "wand.and.stars")
+                    }
 
-            Section {
-                NavigationLink {
-                    PlaceholderView(
-                        title: "New Post",
-                        subtitle: "Create a new post",
-                        icon: "square.and.pencil"
-                    )
-                    .navigationTitle("Compose")
-                } label: {
-                    Label("Create New Post", systemImage: "plus.circle.fill")
-                        .foregroundStyle(.tint)
+                    Button(action: {}) {
+                        Image(systemName: "photo.on.rectangle")
+                    }
+
+                    Button(action: {}) {
+                        Image(systemName: "camera")
+                    }
+
+                    Button(action: {}) {
+                        Image(systemName: "waveform")
+                    }
+
+                    Button(action: {}) {
+                        Image(systemName: "location")
+                    }
+
+                    Button(action: {}) {
+                        Image(systemName: "figure.walk")
+                    }
+
+                    Spacer()
+
+                    Button {
+                        isTextEditorFocused = false
+                    } label: {
+                        Image(systemName: "keyboard.chevron.compact.down")
+                    }
                 }
             }
         }
+
+    private func getURLPlaceholder(for type: IndiePostType) -> String {
+        switch type {
+        case .bookmark: return "URL"
+        case .reply: return "Reply to URL"
+        case .repost: return "URL to repost"
+        case .like: return "URL to like"
+        default: return "URL"
+        }
+    }
+
+    private func getBodyPlaceholder(for type: IndiePostType) -> String {
+        switch type {
+        case .bookmark: return "Notes (optional)"
+        case .reply: return "Write your reply..."
+        case .repost: return "Add your thoughts..."
+        case .like: return "Why do you like this?"
+        default: return "Start writing..."
+        }
+    }
+
+    private func getHintForPostType(_ type: IndiePostType) -> String {
+        switch type {
+        case .note:
+            return "Share a quick thought or update"
+        case .article:
+            return "Write a longer form piece with title and content"
+        case .photo:
+            return "Share photos with optional captions"
+        case .bookmark:
+            return "Save a link for later"
+        case .reply:
+            return "Reply to someone's post"
+        case .repost:
+            return "Share someone else's content"
+        case .like:
+            return "Like something on the web"
+        case .video:
+            return "Share video content"
+        }
+    }
+}
+
+struct DraftsListView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var drafts: [String] = ["Draft 1", "Draft 2", "Draft 3"] // Mock data for demonstration
+    @Binding var selectedDraft: String?
+
+    var body: some View {
+        List {
+            ForEach(drafts, id: \.self) { draft in
+                Button {
+                    selectedDraft = draft
+                    dismiss()
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(draft)
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            Text("Last edited 2 hours ago")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            .onDelete(perform: deleteDrafts)
+        }
         .navigationTitle("Drafts")
         .navigationBarTitleDisplayMode(.large)
+    }
+
+    private func deleteDrafts(at offsets: IndexSet) {
+        drafts.remove(atOffsets: offsets)
     }
 }
 

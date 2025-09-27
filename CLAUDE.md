@@ -22,3 +22,4 @@ Swift 5.9+ / SwiftUI: Follow standard conventions
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->
+- always search apple docs using MCP tools for best practices before implementing swift features

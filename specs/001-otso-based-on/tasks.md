@@ -42,27 +42,27 @@
 - Paths shown below are relative to repository root
 
 ## Phase 3.1: Setup & Configuration
-- [ ] T001 Configure SwiftUI previews with mock data in packages/otso-apple/Otso/Otso/Preview Content/PreviewData.swift
+- [x] T001 Configure SwiftUI previews with mock data in packages/otso-apple/Otso/Otso/Preview Content/PreviewData.swift
 - [ ] T002 [P] Add SF Symbols and color assets to packages/otso-apple/Otso/Otso/Resources/Assets.xcassets
-- [ ] T003 [P] Create app color scheme with semantic colors in packages/otso-apple/Otso/Otso/Extensions/Color+Theme.swift
+- [x] T003 [P] Create app color scheme with semantic colors in packages/otso-apple/Otso/Otso/Extensions/Color+Theme.swift
 
 ## Phase 3.2: Core Navigation & Layout (UI Only)
-- [ ] T004 Update main ContentView with tab navigation in packages/otso-apple/Otso/Otso/ContentView.swift
-- [ ] T005 Enhance liquid glass tab bar with animations in packages/otso-apple/Otso/Otso/LiquidTabBar.swift
+- [x] T004 Update main ContentView with tab navigation in packages/otso-apple/Otso/Otso/ContentView.swift
+- [x] T005 Enhance liquid glass tab bar with animations in packages/otso-apple/Otso/Otso/LiquidTabBar.swift
 - [ ] T006 [P] Create custom navigation styles in packages/otso-apple/Otso/Otso/Styles/NavigationStyles.swift
 - [ ] T007 [P] Add haptic feedback utilities in packages/otso-apple/Otso/Otso/Utilities/HapticFeedback.swift
 
 ## Phase 3.3: Welcome & Onboarding Views
-- [ ] T008 [P] Create welcome view with IndieAuth sign-in button in packages/otso-apple/Otso/Otso/Views/Onboarding/WelcomeView.swift
-- [ ] T009 [P] Design website URL input view in packages/otso-apple/Otso/Otso/Views/Onboarding/WebsiteInputView.swift
+- [x] T008 [P] Create welcome view with IndieAuth sign-in button in packages/otso-apple/Otso/Otso/Views/Onboarding/WelcomeView.swift
+- [x] T009 [P] Design website URL input view in packages/otso-apple/Otso/Otso/Views/Onboarding/WebsiteInputView.swift
 - [ ] T010 [P] Build authorization flow UI screens in packages/otso-apple/Otso/Otso/Views/Onboarding/AuthorizationView.swift
 
 ## Phase 3.4: Post Composer Interface
-- [ ] T011 Create main composer view with TextEditor in packages/otso-apple/Otso/Otso/Views/PostComposer/ComposerView.swift
-- [ ] T012 [P] Add character counter component in packages/otso-apple/Otso/Otso/Views/PostComposer/CharacterCounter.swift
-- [ ] T013 [P] Design post type selector (note/article/photo) in packages/otso-apple/Otso/Otso/Views/PostComposer/PostTypeSelector.swift
-- [ ] T014 [P] Create visibility picker (public/unlisted/private) in packages/otso-apple/Otso/Otso/Views/PostComposer/VisibilityPicker.swift
-- [ ] T015 Build media attachment grid view in packages/otso-apple/Otso/Otso/Views/PostComposer/MediaGridView.swift
+- [x] T011 Create main composer view with TextEditor in packages/otso-apple/Otso/Otso/Views/PostComposer/ComposerView.swift
+- [x] T012 [P] Add character counter component in packages/otso-apple/Otso/Otso/Views/PostComposer/CharacterCounter.swift
+- [x] T013 [P] Design post type selector (note/article/photo) in packages/otso-apple/Otso/Otso/Views/PostComposer/PostTypeSelector.swift
+- [x] T014 [P] Create visibility picker (public/unlisted/private) in packages/otso-apple/Otso/Otso/Views/PostComposer/VisibilityPicker.swift
+- [x] T015 Build media attachment grid view in packages/otso-apple/Otso/Otso/Views/PostComposer/MediaGridView.swift
 - [ ] T016 [P] Design hashtag/mention highlighting in packages/otso-apple/Otso/Otso/Views/PostComposer/SyntaxHighlighter.swift
 - [ ] T017 [P] Create toolbar with formatting options in packages/otso-apple/Otso/Otso/Views/PostComposer/ComposerToolbar.swift
 
