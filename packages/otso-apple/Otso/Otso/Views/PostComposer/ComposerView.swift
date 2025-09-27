@@ -234,5 +234,7 @@ struct ComposerView: View {
 }
 
 #Preview {
-    ComposerView()
+    NavigationStack {
+        ComposerView()
+    }
 }
