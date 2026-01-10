@@ -22,6 +22,25 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
     }
 }
 
+// Post model
+struct Post: Identifiable {
+    let id = UUID()
+    let content: String
+    let title: String?
+    let url: String?
+    let tags: [String]
+    let type: PostType
+    let timestamp: Date
+    var likes: Int = 0
+    var replies: Int = 0
+
+    var timeAgo: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: timestamp, relativeTo: Date())
+    }
+}
+
 struct ContentView: View {
     @State private var showingSettings = false
     @State private var searchText = ""
@@ -32,11 +51,36 @@ struct ContentView: View {
     @State private var hasDraft = false
     @State private var showingDraft = false
     @State private var draftContent = ""
+    @State private var posts: [Post] = []
+    @State private var editingPost: Post? = nil
     @Environment(\.isSearching) private var isSearching
 
     enum ContentFilter {
         case posts
         case mentions
+    }
+
+    // Computed property for filtered posts
+    var filteredPosts: [Post] {
+        if searchText.isEmpty {
+            return posts
+        }
+
+        let lowercasedSearch = searchText.lowercased()
+        return posts.filter { post in
+            // Search in content
+            post.content.lowercased().contains(lowercasedSearch) ||
+            // Search in title if it exists
+            (post.title?.lowercased().contains(lowercasedSearch) ?? false) ||
+            // Search in tags
+            post.tags.contains { tag in
+                tag.lowercased().contains(lowercasedSearch)
+            } ||
+            // Search in URL if it exists
+            (post.url?.lowercased().contains(lowercasedSearch) ?? false) ||
+            // Search by post type
+            post.type.displayName.lowercased().contains(lowercasedSearch)
+        }
     }
 
     private var detents: Set<PresentationDetent> {
@@ -93,7 +137,7 @@ struct ContentView: View {
             // Posts tab
             Tab("Posts", systemImage: "text.badge.checkmark", value: "posts") {
                 NavigationStack {
-                    PostsListView()
+                    PostsListView(posts: isSearching || !searchText.isEmpty ? filteredPosts : posts, editingPost: $editingPost, showingDraft: $showingDraft)
                         .navigationTitle("Posts")
                         .toolbar {
                             ToolbarItem(placement: .topBarTrailing) {
@@ -153,11 +197,46 @@ struct ContentView: View {
                                 subtitle: "Find \(contentFilter == .posts ? "posts by title, content, or tags" : "mentions across the web")",
                                 icon: "magnifyingglass"
                             )
+                        } else if contentFilter == .posts {
+                            // Show actual search results for posts
+                            ScrollView {
+                                LazyVStack(spacing: 0) {
+                                    if filteredPosts.isEmpty {
+                                        PlaceholderView(
+                                            title: "No posts found",
+                                            subtitle: "No posts match \"\(searchText)\"",
+                                            icon: "magnifyingglass"
+                                        )
+                                        .padding(.top, 40)
+                                    } else {
+                                        // Search results header
+                                        HStack {
+                                            Text("\(filteredPosts.count) result\(filteredPosts.count == 1 ? "" : "s")")
+                                                .font(.headline)
+                                            Spacer()
+                                        }
+                                        .padding()
+                                        .background(Color(.systemBackground))
+
+                                        ForEach(filteredPosts) { post in
+                                            Button {
+                                                editingPost = post
+                                                showingDraft = true
+                                            } label: {
+                                                PostRowView(post: post)
+                                            }
+                                            .buttonStyle(.plain)
+                                            Divider()
+                                        }
+                                    }
+                                }
+                            }
                         } else {
+                            // Mentions placeholder
                             PlaceholderView(
-                                title: "Searching \(contentFilter == .posts ? "posts" : "mentions") for \"\(searchText)\"",
-                                subtitle: "No results found",
-                                icon: "magnifyingglass"
+                                title: "Searching mentions for \"\(searchText)\"",
+                                subtitle: "Mentions search coming soon",
+                                icon: "at"
                             )
                         }
                     }
@@ -176,7 +255,9 @@ struct ContentView: View {
                 selectedDetent: $draftSelectedDetent,
                 hasDraft: $hasDraft,
                 showingDraft: $showingDraft,
-                draftContent: $draftContent
+                draftContent: $draftContent,
+                posts: $posts,
+                editingPost: $editingPost
             )
             .interactiveDismissDisabled(draftSelectedDetent != .large)
             .presentationDetents(detents, selection: $draftSelectedDetent)
@@ -204,6 +285,8 @@ struct DraftComposerView: View {
     @Binding var hasDraft: Bool
     @Binding var showingDraft: Bool
     @Binding var draftContent: String
+    @Binding var posts: [Post]
+    @Binding var editingPost: Post?
 
     @State private var postContent = ""
     @State private var postType: PostType = .note
@@ -252,7 +335,6 @@ struct DraftComposerView: View {
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
-                // Main content
                 ScrollView {
                     VStack(spacing: 12) {
                         // URL field for bookmark, like, reply, repost
@@ -322,75 +404,127 @@ struct DraftComposerView: View {
                         }
                     }
                     .padding(.top, 20)
-                    .padding(.bottom, 100) // Space for toolbar
+                    .padding(.bottom, 100) // Space for floating toolbar
                 }
 
-                // Floating toolbar at bottom
-                VStack(spacing: 0) {
+                // Floating liquid glass toolbar
+                VStack(spacing: 8) {
                     // Character counter
-                    if postContent.count > 0 {
+                    if postContent.count > 0 && postType == .note {
                         HStack {
                             Spacer()
-                            Text("\(characterCount)")
+                            Text("\(characterCount) / \(characterLimit)")
                                 .font(.caption)
                                 .foregroundStyle(characterCount > characterLimit ? .red : .secondary)
-                                .padding(.trailing, 20)
-                                .padding(.bottom, 8)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 4)
+                                .background(.thinMaterial)
+                                .clipShape(Capsule())
+                                .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
                         }
+                        .padding(.horizontal, 20)
                     }
 
-                    // Toolbar
-                    HStack(spacing: 20) {
-                        Button {
-                            // Add photo
-                        } label: {
-                            Image(systemName: "photo")
-                                .font(.system(size: 20))
-                                .foregroundStyle(.primary)
-                        }
+                    // Toolbar with liquid glass effect
+                    HStack(spacing: 0) {
+                        // Quick text actions
+                        HStack(spacing: 20) {
+                            Button {
+                                postContent += "#"
+                                focusedField = .content
+                            } label: {
+                                Image(systemName: "number")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(.primary)
+                                    .frame(width: 36, height: 36)
+                                    .background(Circle().fill(.ultraThinMaterial))
+                            }
+                            .buttonStyle(.plain)
 
-                        Button {
-                            // Add hashtag
-                            postContent += "#"
-                            isTextEditorFocused = true
-                        } label: {
-                            Image(systemName: "number")
-                                .font(.system(size: 20))
-                                .foregroundStyle(.primary)
-                        }
+                            Button {
+                                postContent += "@"
+                                focusedField = .content
+                            } label: {
+                                Image(systemName: "at")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(.primary)
+                                    .frame(width: 36, height: 36)
+                                    .background(Circle().fill(.ultraThinMaterial))
+                            }
+                            .buttonStyle(.plain)
 
-                        Button {
-                            // Add mention
-                            postContent += "@"
-                            isTextEditorFocused = true
-                        } label: {
-                            Image(systemName: "at")
-                                .font(.system(size: 20))
-                                .foregroundStyle(.primary)
+                            Button {
+                                // Add link
+                            } label: {
+                                Image(systemName: "link")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(.primary)
+                                    .frame(width: 36, height: 36)
+                                    .background(Circle().fill(.ultraThinMaterial))
+                            }
+                            .buttonStyle(.plain)
                         }
-
-                        Button {
-                            // Add link
-                        } label: {
-                            Image(systemName: "link")
-                                .font(.system(size: 20))
-                                .foregroundStyle(.primary)
-                        }
+                        .padding(.leading, 20)
 
                         Spacer()
 
-                        Button {
-                            // Format text
-                        } label: {
-                            Image(systemName: "textformat")
-                                .font(.system(size: 20))
-                                .foregroundStyle(.primary)
+                        // Media and format actions
+                        HStack(spacing: 20) {
+                            Button {
+                                // Add photo
+                            } label: {
+                                Image(systemName: "photo")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(.primary)
+                                    .frame(width: 36, height: 36)
+                                    .background(Circle().fill(.ultraThinMaterial))
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                // Camera
+                            } label: {
+                                Image(systemName: "camera")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(.primary)
+                                    .frame(width: 36, height: 36)
+                                    .background(Circle().fill(.ultraThinMaterial))
+                            }
+                            .buttonStyle(.plain)
+
+                            Rectangle()
+                                .fill(Color(.separator).opacity(0.3))
+                                .frame(width: 1, height: 24)
+                                .padding(.horizontal, 8)
+
+                            Button {
+                                // Format text
+                            } label: {
+                                Image(systemName: "textformat")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(.primary)
+                                    .frame(width: 36, height: 36)
+                                    .background(Circle().fill(.ultraThinMaterial))
+                            }
+                            .buttonStyle(.plain)
                         }
+                        .padding(.trailing, 20)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 16)
-                    .background(.regularMaterial)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 28)
+                            .fill(.regularMaterial)
+                            .shadow(color: .black.opacity(0.15), radius: 12, x: 0, y: 4)
+                    )
+                    .padding(.horizontal, 16)
                 }
+                .padding(.bottom, 16) // Margin above keyboard
             }
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
@@ -459,11 +593,46 @@ struct DraftComposerView: View {
 
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
-                            // Post action
+                            if let editing = editingPost {
+                                // Update existing post
+                                if let index = posts.firstIndex(where: { $0.id == editing.id }) {
+                                    posts[index] = Post(
+                                        content: postContent,
+                                        title: postTitle.isEmpty ? nil : postTitle,
+                                        url: postURL.isEmpty ? nil : postURL,
+                                        tags: postTags.isEmpty ? [] : postTags.split(separator: " ").map { String($0).trimmingCharacters(in: .whitespaces) },
+                                        type: postType,
+                                        timestamp: editing.timestamp,
+                                        likes: editing.likes,
+                                        replies: editing.replies
+                                    )
+                                }
+                            } else {
+                                // Create new post
+                                let newPost = Post(
+                                    content: postContent,
+                                    title: postTitle.isEmpty ? nil : postTitle,
+                                    url: postURL.isEmpty ? nil : postURL,
+                                    tags: postTags.isEmpty ? [] : postTags.split(separator: " ").map { String($0).trimmingCharacters(in: .whitespaces) },
+                                    type: postType,
+                                    timestamp: Date(),
+                                    likes: 0,
+                                    replies: 0
+                                )
+
+                                // Add to posts array at the beginning
+                                posts.insert(newPost, at: 0)
+                            }
+
+                            // Clear form and dismiss
+                            editingPost = nil
                             showingDraft = false
                             hasDraft = false
                             draftContent = ""
                             postContent = ""
+                            postTitle = ""
+                            postURL = ""
+                            postTags = ""
                         } label: {
                             Image(systemName: "arrow.up")
                                 .font(.title2)
@@ -476,6 +645,18 @@ struct DraftComposerView: View {
             .toolbarBackground(.visible, for: .navigationBar)
         }
         .onAppear {
+            // Load editing post data if editing
+            if let editing = editingPost {
+                postContent = editing.content
+                postTitle = editing.title ?? ""
+                postURL = editing.url ?? ""
+                postTags = editing.tags.joined(separator: " ")
+                postType = editing.type
+            } else if !draftContent.isEmpty {
+                // Restore draft content if not editing
+                postContent = draftContent
+            }
+
             // Focus appropriate field based on post type
             if [.bookmark, .like, .reply, .repost].contains(postType) {
                 focusedField = .url
@@ -483,11 +664,6 @@ struct DraftComposerView: View {
                 focusedField = .title
             } else {
                 focusedField = .content
-            }
-
-            // Restore draft content
-            if !draftContent.isEmpty {
-                postContent = draftContent
             }
         }
         .onChange(of: selectedDetent) { oldValue, newValue in
@@ -510,26 +686,11 @@ struct DraftComposerView: View {
 }
 
 struct PostsListView: View {
+    let posts: [Post]
+    @Binding var editingPost: Post?
+    @Binding var showingDraft: Bool
     @State private var hideNavBar = false
     @State private var lastScrollOffset: CGFloat = 0
-
-    let samplePosts = [
-        ("Just shipped a major update to my app! 🚀", "2 hours ago", 42, 8),
-        ("Working on some exciting new features. Stay tuned for the announcement next week!", "5 hours ago", 128, 24),
-        ("The new SwiftUI APIs in iOS 18 are incredible. Been experimenting with the new tab bar accessories.", "1 day ago", 256, 45),
-        ("Coffee ☕ + Code 💻 = Perfect morning", "2 days ago", 89, 12),
-        ("Just discovered an amazing design pattern that simplified my entire architecture. Blog post coming soon!", "3 days ago", 367, 78),
-        ("Weekend project: Building a custom camera interface with AVFoundation", "4 days ago", 198, 34),
-        ("TIL: You can use @State with computed properties in SwiftUI. Mind blown 🤯", "5 days ago", 445, 92),
-        ("The attention to detail in iOS 18's liquid glass design is remarkable", "1 week ago", 234, 41),
-        ("Debugging is like being the detective in a crime movie where you are also the murderer", "1 week ago", 892, 156),
-        ("Finally got dark mode working perfectly across all screens!", "2 weeks ago", 145, 28),
-        ("Pro tip: Use Instruments early and often. Your users will thank you.", "2 weeks ago", 267, 52),
-        ("The SwiftUI preview canvas is a game changer for rapid prototyping", "3 weeks ago", 189, 31),
-        ("Just crossed 10K downloads on the App Store! Thank you everyone! 🎉", "1 month ago", 1234, 234),
-        ("Working remotely from a coffee shop today. The ambiance is perfect for coding.", "1 month ago", 78, 15),
-        ("Remember to take breaks and stretch. Your body will thank you.", "1 month ago", 156, 22)
-    ]
 
     var body: some View {
         ScrollView {
@@ -542,14 +703,34 @@ struct PostsListView: View {
                 }
                 .frame(height: 0)
 
-                ForEach(Array(samplePosts.enumerated()), id: \.offset) { _, post in
-                    PostRowView(
-                        content: post.0,
-                        timeAgo: post.1,
-                        likes: post.2,
-                        replies: post.3
-                    )
-                    Divider()
+                if posts.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.secondary)
+                        Text("No posts yet")
+                            .font(.title3)
+                            .fontWeight(.medium)
+                        Text("Tap the compose button below to create your first post")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(40)
+                    .frame(maxWidth: .infinity, minHeight: 400)
+                } else {
+                    ForEach(posts) { post in
+                        Button {
+                            editingPost = post
+                            showingDraft = true
+                        } label: {
+                            PostRowView(
+                                post: post
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        Divider()
+                    }
                 }
             }
         }
@@ -573,27 +754,68 @@ struct PostsListView: View {
 }
 
 struct PostRowView: View {
-    let content: String
-    let timeAgo: String
-    let likes: Int
-    let replies: Int
+    let post: Post
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(content)
+            // Show post type badge if not a note
+            if post.type != .note {
+                HStack {
+                    Image(systemName: post.type.icon)
+                        .font(.caption)
+                    Text(post.type.displayName)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                }
+                .foregroundStyle(.secondary)
+            }
+
+            // Show title if present (for articles)
+            if let title = post.title, !title.isEmpty {
+                Text(title)
+                    .font(.headline)
+                    .multilineTextAlignment(.leading)
+            }
+
+            // Show URL if present
+            if let url = post.url, !url.isEmpty {
+                Text(url)
+                    .font(.caption)
+                    .foregroundStyle(.blue)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            // Main content
+            Text(post.content)
                 .font(.body)
                 .multilineTextAlignment(.leading)
 
+            // Show tags if present
+            if !post.tags.isEmpty {
+                HStack {
+                    ForEach(post.tags, id: \.self) { tag in
+                        Text(tag)
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color(.systemGray6))
+                            .clipShape(Capsule())
+                    }
+                }
+            }
+
+            // Metadata
             HStack(spacing: 20) {
-                Label(timeAgo, systemImage: "clock")
+                Label(post.timeAgo, systemImage: "clock")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Label("\(likes)", systemImage: "heart")
+                Label("\(post.likes)", systemImage: "heart")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Label("\(replies)", systemImage: "bubble.left")
+                Label("\(post.replies)", systemImage: "bubble.left")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
