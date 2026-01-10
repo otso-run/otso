@@ -1,5 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use std::sync::Arc;
+use tokio::task::JoinSet;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod config;
@@ -119,8 +121,8 @@ async fn run_build(
         return Ok(());
     }
 
-    // Initialize event store
-    let event_store = event_store::SqliteEventStore::open(data_dir).await?;
+    // Initialize event store (wrapped in Arc for sharing across tasks)
+    let event_store = Arc::new(event_store::SqliteEventStore::open(data_dir).await?);
 
     // Recover any pending batches from previous runs
     let recovered = event_store.recover_pending().await?;
@@ -129,26 +131,57 @@ async fn run_build(
     }
 
     // Determine source data directory from config or default
-    let source_data_dir = config.defaults.data_dir.clone()
-        .unwrap_or_else(|| format!("{}/sources", data_dir));
+    let source_data_dir: Arc<str> = config.defaults.data_dir.clone()
+        .unwrap_or_else(|| format!("{}/sources", data_dir))
+        .into();
 
-    for source_config in &sources {
-        tracing::info!("Processing source: {}", source_config.name);
+    // Process sources in parallel using JoinSet (NFR-004)
+    let mut join_set: JoinSet<(String, Result<event_store::BatchStats>)> = JoinSet::new();
 
-        match process_source(&event_store, &source_data_dir, source_config).await {
-            Ok(stats) => {
+    for source_config in sources {
+        let store = Arc::clone(&event_store);
+        let data_dir = Arc::clone(&source_data_dir);
+        let source_name = source_config.name.clone();
+
+        join_set.spawn(async move {
+            tracing::info!("Processing source: {}", source_name);
+            let result = process_source(&store, &data_dir, &source_config).await;
+            (source_name, result)
+        });
+    }
+
+    // Collect results
+    let mut success_count = 0;
+    let mut error_count = 0;
+
+    while let Some(result) = join_set.join_next().await {
+        match result {
+            Ok((source_name, Ok(stats))) => {
                 tracing::info!(
                     "  {} events: {} inserted, {} skipped",
-                    source_config.name,
+                    source_name,
                     stats.inserted,
                     stats.skipped
                 );
+                success_count += 1;
             }
-            Err(e) => {
-                tracing::error!("  {} failed: {}", source_config.name, e);
+            Ok((source_name, Err(e))) => {
+                tracing::error!("  {} failed: {}", source_name, e);
+                error_count += 1;
+            }
+            Err(join_error) => {
+                tracing::error!("Task panicked: {}", join_error);
+                error_count += 1;
             }
         }
     }
+
+    tracing::info!(
+        "Completed {} sources ({} succeeded, {} failed)",
+        success_count + error_count,
+        success_count,
+        error_count
+    );
 
     // Update projections
     tracing::info!("Updating projections...");
@@ -158,7 +191,7 @@ async fn run_build(
 }
 
 async fn process_source(
-    event_store: &event_store::SqliteEventStore,
+    event_store: &Arc<event_store::SqliteEventStore>,
     source_data_dir: &str,
     source_config: &config::SourceConfig,
 ) -> Result<event_store::BatchStats> {
