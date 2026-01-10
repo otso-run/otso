@@ -1,0 +1,267 @@
+---
+title: sources.toml Reference
+description: Complete reference for configuring data sources.
+sidebar:
+  order: 1
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The `sources.toml` file defines which data sources the indexer processes. It's located at `data/config/sources.toml`.
+
+## File Structure
+
+```toml
+[defaults]
+schema_version = "1.0"
+data_dir = "data/fixtures"  # or "data/sources" for production
+
+[[sources]]
+name = "pinboard"
+enabled = true
+db_path = "pinboard/chronicle/chronicle.db"
+category = "reading"
+
+[[sources.queries]]
+table = "events"
+entry_type = "bookmark"
+action_type = "BookmarkAction"
+object_type = "WebPage"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.name') as title,
+    json_extract(object, '$.description') as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events WHERE type = 'BookmarkAction'
+"""
+```
+
+## Defaults Section
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `schema_version` | No | Config format version (currently "1.0") |
+| `data_dir` | No | Base directory for source databases. Defaults to `data/sources`. Use `data/fixtures` for testing. |
+
+## Source Configuration
+
+Each `[[sources]]` block defines a data source.
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Unique identifier for the source |
+| `enabled` | No | Whether to process this source. Defaults to `true` |
+| `db_path` | Yes | Path to SQLite database, relative to `data_dir` |
+| `category` | No | Category for filtering. See [categories](#categories) below |
+| `default_visibility` | No | Visibility for items without explicit visibility. Options: `public`, `unlisted`, `private`, `secret` |
+
+### Categories
+
+| Category | Use for |
+|----------|---------|
+| `reading` | Bookmarks, highlights, RSS |
+| `music` | Listening history, scrobbles |
+| `social` | Posts, messages, replies |
+| `comms` | Email, chat, DMs |
+| `productivity` | Tasks, time tracking |
+| `browse` | Browser history, searches |
+| `notes` | Notes, documents |
+| `photos` | Images, screenshots |
+| `location` | Check-ins, GPS logs |
+| `code` | Commits, issues, PRs |
+| `ai` | AI conversations |
+| `curation` | Collections, boards |
+| `video` | Watch history |
+| `calendar` | Events, meetings |
+
+## Query Configuration
+
+Each source can have one or more `[[sources.queries]]` blocks.
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `table` | No | Table name for validation (optional) |
+| `entry_type` | Yes | Type of entry (e.g., "bookmark", "listen", "note") |
+| `action_type` | No | Schema.org action type (e.g., "BookmarkAction") |
+| `object_type` | No | Schema.org object type (e.g., "WebPage") |
+| `sql` | Yes | SQL query to extract events |
+
+### Required SQL Columns
+
+Your SQL query should return these columns:
+
+| Column | Required | Description |
+|--------|----------|-------------|
+| `external_id` | Yes | Unique ID within the source. Also accepts `source_id` or `id` |
+| `title` | Yes | Display title |
+| `content` | No | Full text for search indexing |
+| `occurred_at` | Yes | When the event happened. Also accepts `timestamp`, `created_at`, `date`, etc. |
+| `url` | No | Link to original item |
+| `visibility` | No | Item visibility level |
+
+### Timestamp Handling
+
+The indexer automatically parses many timestamp formats:
+
+- **Unix timestamps**: `1704067200` (seconds) or `1704067200000` (milliseconds)
+- **ISO 8601**: `2024-01-01T00:00:00Z`
+- **Date strings**: `2024-01-01`
+- **Various formats**: `Jan 1, 2024`, `01/01/2024`, etc.
+
+If parsing fails, the event uses the current time with a warning.
+
+## Aggregation
+
+For high-volume sources (like time tracking), you can enable aggregation:
+
+```toml
+[[sources]]
+name = "timing"
+enabled = true
+db_path = "timing/chronicle/chronicle.db"
+
+[sources.aggregation]
+strategy = "daily"
+key_fields = ["title"]
+```
+
+Available strategies:
+
+- **daily** — Group events by date + key fields (e.g., 2.2M records → ~50K daily aggregates)
+- **hourly** — Group events by hour + key fields
+- **session** — Group events with gaps less than `time_bucket` seconds (default 30 minutes)
+
+| Field | Description |
+|-------|-------------|
+| `strategy` | Aggregation period: `daily`, `hourly`, `session`, or `none` |
+| `key_fields` | Fields to group by |
+| `time_bucket` | For session strategy: gap threshold in seconds (default 1800 = 30 min) |
+
+## Configured Sources
+
+The default configuration includes 23 sources:
+
+### Reading
+- **pinboard** — Bookmarks from Pinboard
+- **readwise** — Highlights from Readwise
+
+### Music
+- **spotify** — Listening history from Spotify
+- **lastfm** — Scrobbles from Last.fm
+- **apple-podcasts** — Podcast episodes
+
+### Messaging
+- **imessage** — iMessage conversations
+- **linkedin** — LinkedIn messages
+
+### Productivity
+- **things** — Tasks from Things app
+- **timing** — App usage from Timing
+
+### Browse
+- **safari** — Safari browsing history
+- **chrome** — Chrome history (from Google Takeout)
+- **google-search** — Search queries
+
+### Notes
+- **apple-notes** — Notes from Apple Notes
+- **notion** — Pages from Notion
+
+### Photos
+- **apple-photos** — Photos with metadata
+
+### Location
+- **foursquare** — Check-ins
+
+### Code
+- **github** — GitHub activity
+
+### AI
+- **claude** — Claude conversation exports
+
+### Curation
+- **arena** — Are.na blocks and channels
+
+### Social
+- **twitter-**** — Twitter/X archive (supports multiple accounts)
+
+### Video
+- **youtube** — YouTube watch history
+
+### Calendar
+- **gcal** — Google Calendar events
+
+## Example: Adding a Custom Source
+
+Here's a complete example for adding a custom notes database:
+
+```toml
+[[sources]]
+name = "my-notes"
+enabled = true
+db_path = "my-notes/notes.db"
+category = "notes"
+default_visibility = "private"
+
+[[sources.queries]]
+table = "notes"
+entry_type = "note"
+action_type = "CreateAction"
+object_type = "NoteDigitalDocument"
+sql = """
+SELECT
+    id as external_id,
+    title,
+    body as content,
+    strftime('%s', created_at) as occurred_at,
+    NULL as url
+FROM notes
+WHERE deleted_at IS NULL
+ORDER BY created_at DESC
+"""
+```
+
+Key points:
+- Use `strftime('%s', ...)` to convert datetime columns to Unix timestamps
+- Filter out deleted items in the WHERE clause
+- Return `NULL` for optional columns you don't have
+- Set `default_visibility` to control indexing
+
+## Validating Configuration
+
+Check your configuration before indexing:
+
+```bash
+cd packages/otso-indexer
+cargo run --release -- validate
+```
+
+This checks:
+- TOML syntax
+- Required fields
+- Table existence
+- SQL syntax (via EXPLAIN)
+
+## CLI Reference
+
+```bash
+# Build all enabled sources
+cargo run --release -- build
+
+# Build a specific source
+cargo run --release -- build --source pinboard
+
+# Rebuild search index only (skip event store)
+cargo run --release -- build --meili-only
+
+# Show statistics
+cargo run --release -- stats
+
+# Validate configuration
+cargo run --release -- validate
+
+# Full rebuild from event store
+cargo run --release -- rebuild
+```

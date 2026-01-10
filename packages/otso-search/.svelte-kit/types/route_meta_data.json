@@ -1,0 +1,15 @@
+{
+	"/": [],
+	"/api/document/[id]": [
+		"src/routes/api/document/[id]/+server.ts"
+	],
+	"/api/search": [
+		"src/routes/api/search/+server.ts"
+	],
+	"/api/stats": [
+		"src/routes/api/stats/+server.ts"
+	],
+	"/api/timeline": [
+		"src/routes/api/timeline/+server.ts"
+	]
+}

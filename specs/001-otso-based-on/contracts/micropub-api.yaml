@@ -1,0 +1,189 @@
+openapi: 3.0.0
+info:
+  title: Micropub API Contract for Otso iOS
+  version: 1.0.0
+  description: Micropub endpoint interactions for the Otso iOS app
+
+servers:
+  - url: '{micropubEndpoint}'
+    variables:
+      micropubEndpoint:
+        default: https://example.com/micropub
+        description: User's Micropub endpoint discovered via IndieAuth
+
+paths:
+  /:
+    get:
+      summary: Query Micropub configuration
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [config, source, syndicate-to, category, contact]
+      responses:
+        '200':
+          description: Configuration response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MicropubConfig'
+
+    post:
+      summary: Create or update a post
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MicropubRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MicropubFormRequest'
+      responses:
+        '201':
+          description: Post created successfully
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URL of the created post
+        '202':
+          description: Post accepted for processing
+          headers:
+            Location:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+
+  schemas:
+    MicropubConfig:
+      type: object
+      properties:
+        'media-endpoint':
+          type: string
+          format: uri
+        'syndicate-to':
+          type: array
+          items:
+            type: object
+            properties:
+              uid:
+                type: string
+              name:
+                type: string
+        'post-types':
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+              name:
+                type: string
+
+    MicropubRequest:
+      type: object
+      properties:
+        type:
+          type: array
+          items:
+            type: string
+          example: ["h-entry"]
+        properties:
+          type: object
+          properties:
+            name:
+              type: array
+              items:
+                type: string
+            content:
+              type: array
+              items:
+                type: string
+            category:
+              type: array
+              items:
+                type: string
+            photo:
+              type: array
+              items:
+                type: string
+                format: uri
+            'in-reply-to':
+              type: array
+              items:
+                type: string
+                format: uri
+            'like-of':
+              type: array
+              items:
+                type: string
+                format: uri
+            'repost-of':
+              type: array
+              items:
+                type: string
+                format: uri
+            'bookmark-of':
+              type: array
+              items:
+                type: string
+                format: uri
+            published:
+              type: array
+              items:
+                type: string
+                format: date-time
+            visibility:
+              type: array
+              items:
+                type: string
+                enum: [public, unlisted, private]
+            'mp-syndicate-to':
+              type: array
+              items:
+                type: string
+
+    MicropubFormRequest:
+      type: object
+      properties:
+        h:
+          type: string
+          example: entry
+        name:
+          type: string
+        content:
+          type: string
+        category:
+          type: string
+        photo:
+          type: string
+          format: binary
+        'in-reply-to':
+          type: string
+          format: uri
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        error_description:
+          type: string

@@ -1,0 +1,617 @@
+# Otso Source Configuration
+# This file defines all data sources for the indexer.
+# Each source extracts events from a SQLite database using configured queries.
+#
+# For development/testing: use fixtures/ directory (anonymized mock data)
+# For production: use sources/ directory (real user data - gitignored)
+
+[defaults]
+schema_version = "1.0"
+# Change to "sources" for production use with real data
+data_dir = "data/fixtures"
+
+# ============================================================================
+# BOOKMARKING & READING
+# ============================================================================
+
+[[sources]]
+name = "pinboard"
+enabled = true
+db_path = "pinboard/chronicle/chronicle.db"
+category = "reading"
+
+[[sources.queries]]
+table = "events"
+entry_type = "bookmark"
+action_type = "BookmarkAction"
+object_type = "WebPage"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.name') as title,
+    COALESCE(json_extract(object, '$.description'), '') || ' ' || COALESCE(json_extract(result, '$.name'), '') as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events WHERE type = 'BookmarkAction'
+"""
+
+[[sources]]
+name = "readwise"
+enabled = true
+db_path = "readwise/chronicle/chronicle.db"
+category = "reading"
+
+[[sources.queries]]
+table = "events"
+entry_type = "highlight"
+action_type = "HighlightAction"
+object_type = "Quotation"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(result, '$.name') as title,
+    COALESCE(json_extract(object, '$.name'), '') as content,
+    startTime as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+"""
+
+# ============================================================================
+# MUSIC & PODCASTS
+# ============================================================================
+
+[[sources]]
+name = "spotify"
+enabled = true
+db_path = "spotify/chronicle/chronicle.db"
+category = "music"
+
+[[sources.queries]]
+table = "events"
+entry_type = "listen"
+action_type = "ListenAction"
+object_type = "MusicRecording"
+sql = """
+SELECT
+    source_id as external_id,
+    COALESCE(json_extract(object, '$.byArtist[0].name'), '') || ' - ' || json_extract(object, '$.name') as title,
+    COALESCE(json_extract(object, '$.inAlbum.name'), '') as content,
+    startTime as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+"""
+
+[[sources]]
+name = "lastfm"
+enabled = true
+db_path = "lastfm/chronicle/chronicle.db"
+category = "music"
+
+[[sources.queries]]
+table = "events"
+entry_type = "listen"
+action_type = "ListenAction"
+object_type = "MusicRecording"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.byArtist[0].name') || ' - ' || json_extract(object, '$.name') as title,
+    COALESCE(json_extract(object, '$.inAlbum.name'), '') as content,
+    startTime as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+"""
+
+[[sources]]
+name = "apple-podcasts"
+enabled = true
+db_path = "apple-podcasts/chronicle/chronicle.db"
+category = "music"
+
+[[sources.queries]]
+table = "events"
+entry_type = "listen"
+action_type = "ListenAction"
+object_type = "PodcastEpisode"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.name') as title,
+    COALESCE(json_extract(object, '$.partOfSeries.name'), '') as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+"""
+
+# ============================================================================
+# MESSAGING
+# ============================================================================
+
+[[sources]]
+name = "imessage"
+enabled = true
+db_path = "imessage/chronicle/chronicle.db"
+category = "comms"
+
+[[sources.queries]]
+table = "events"
+entry_type = "message"
+action_type = "SendAction"
+object_type = "Message"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(agent, '$.name') as title,
+    COALESCE(json_extract(object, '$.text'), '') as content,
+    end_time as occurred_at,
+    NULL as url
+FROM events WHERE json_extract(object, '$.text') IS NOT NULL
+"""
+
+[[sources]]
+name = "linkedin"
+enabled = true
+db_path = "linkedin/chronicle/chronicle.db"
+category = "comms"
+
+[[sources.queries]]
+table = "messages"
+entry_type = "message"
+action_type = "SendAction"
+object_type = "Message"
+sql = """
+SELECT
+    rowid as external_id,
+    COALESCE("FROM", 'Unknown') as title,
+    COALESCE(CONTENT, '') as content,
+    DATE as occurred_at,
+    NULL as url
+FROM messages
+"""
+
+# ============================================================================
+# TASKS & PRODUCTIVITY
+# ============================================================================
+
+[[sources]]
+name = "things"
+enabled = true
+db_path = "things/chronicle/chronicle.db"
+category = "productivity"
+
+[[sources.queries]]
+table = "events"
+entry_type = "task"
+action_type = "CreateAction"
+object_type = "Action"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    COALESCE(description, '') as content,
+    startTime as occurred_at,
+    NULL as url
+FROM events WHERE startTime IS NOT NULL
+"""
+
+[[sources.queries]]
+table = "events"
+entry_type = "task-completed"
+action_type = "CompleteAction"
+object_type = "Action"
+sql = """
+SELECT
+    source_id || '-completed' as external_id,
+    '✓ ' || name as title,
+    COALESCE(description, '') as content,
+    endTime as occurred_at,
+    NULL as url
+FROM events WHERE actionStatus = 'completed' AND endTime IS NOT NULL
+"""
+
+[[sources]]
+name = "timing"
+enabled = true
+db_path = "timing/chronicle/chronicle.db"
+category = "productivity"
+
+# Timing can have 2M+ records - aggregate by app and project per day
+[sources.aggregation]
+strategy = "daily"
+key_fields = ["title"]  # App name is in title field
+
+[[sources.queries]]
+table = "events"
+entry_type = "activity"
+action_type = "UseAction"
+object_type = "SoftwareApplication"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(agent, '$.name') as title,
+    COALESCE(json_extract(object, '$.name'), '') || ' ' || COALESCE(json_extract(result, '$.name'), '') as content,
+    startTime as occurred_at,
+    CASE
+        WHEN json_extract(object, '$.url') LIKE 'file://http%'
+        THEN SUBSTR(json_extract(object, '$.url'), 8)
+        WHEN json_extract(object, '$.url') LIKE 'http%'
+        THEN json_extract(object, '$.url')
+        ELSE NULL
+    END as url
+FROM events
+"""
+
+# ============================================================================
+# BROWSING
+# ============================================================================
+
+[[sources]]
+name = "safari"
+enabled = true
+db_path = "safari/chronicle/chronicle.db"
+category = "browse"
+
+[[sources.queries]]
+table = "events"
+entry_type = "visit"
+action_type = "ViewAction"
+object_type = "WebPage"
+sql = """
+SELECT
+    rowid as external_id,
+    json_extract(object, '$.name') as title,
+    COALESCE(json_extract(object, '$.url'), '') as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+"""
+
+# ============================================================================
+# NOTES & DOCUMENTS
+# ============================================================================
+
+[[sources]]
+name = "apple-notes"
+enabled = true
+db_path = "apple-notes/chronicle/chronicle.db"
+category = "notes"
+
+[[sources.queries]]
+table = "events"
+entry_type = "note"
+action_type = "CreateAction"
+object_type = "NoteDigitalDocument"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    COALESCE(text, '') as content,
+    date_created as occurred_at,
+    NULL as url
+FROM events
+"""
+
+[[sources]]
+name = "notion"
+enabled = true
+db_path = "notion/chronicle/chronicle.db"
+category = "notes"
+
+[[sources.queries]]
+table = "pages"
+entry_type = "page"
+action_type = "CreateAction"
+object_type = "DigitalDocument"
+sql = """
+SELECT
+    id as external_id,
+    title as title,
+    COALESCE(content, '') as content,
+    created_time as occurred_at,
+    url
+FROM pages
+"""
+
+# ============================================================================
+# PHOTOS
+# ============================================================================
+
+[[sources]]
+name = "apple-photos"
+enabled = true
+db_path = "apple-photos/chronicle/chronicle.db"
+category = "photos"
+
+[[sources.queries]]
+table = "events"
+entry_type = "photo"
+action_type = "PhotographAction"
+object_type = "Photograph"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    COALESCE(description, '') || ' ' || COALESCE(json_extract(contentLocation, '$.name'), '') as content,
+    dateCreated as occurred_at,
+    NULL as url
+FROM events
+"""
+
+# ============================================================================
+# LOCATION
+# ============================================================================
+
+[[sources]]
+name = "foursquare"
+enabled = true
+db_path = "foursquare/chronicle/chronicle.db"
+category = "location"
+
+[[sources.queries]]
+table = "events"
+entry_type = "checkin"
+action_type = "CheckInAction"
+object_type = "Place"
+sql = """
+SELECT
+    rowid as external_id,
+    json_extract(object, '$.name') as title,
+    COALESCE(json_extract(object, '$.address.streetAddress'), '') || ' ' || COALESCE(json_extract(object, '$.address.addressLocality'), '') as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+"""
+
+# ============================================================================
+# CODE & DEVELOPMENT
+# ============================================================================
+
+[[sources]]
+name = "github"
+enabled = true
+db_path = "github/chronicle/chronicle.db"
+category = "code"
+
+[[sources.queries]]
+table = "events"
+entry_type = "event"
+action_type = "OrganizeAction"
+object_type = "SoftwareSourceCode"
+sql = """
+SELECT
+    source_id as external_id,
+    additionalType || ': ' || COALESCE(json_extract(object, '$.name'), '') as title,
+    COALESCE(description, '') as content,
+    startTime as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+"""
+
+# ============================================================================
+# AI & CONVERSATIONS
+# ============================================================================
+
+[[sources]]
+name = "claude"
+enabled = true
+db_path = "claude/chronicle/chronicle.db"
+category = "ai"
+
+[[sources.queries]]
+table = "conversations"
+entry_type = "conversation"
+action_type = "CommunicateAction"
+object_type = "Conversation"
+sql = """
+SELECT
+    uuid as external_id,
+    COALESCE(name, 'Untitled') as title,
+    COALESCE(summary, '') as content,
+    created_at as occurred_at,
+    NULL as url
+FROM conversations
+"""
+
+# ============================================================================
+# CURATION
+# ============================================================================
+
+[[sources]]
+name = "arena"
+enabled = true
+db_path = "arena/chronicle/chronicle.db"
+category = "curation"
+
+[[sources.queries]]
+table = "channels"
+entry_type = "channel"
+action_type = "CreateAction"
+object_type = "Collection"
+sql = """
+SELECT
+    id as external_id,
+    title as title,
+    COALESCE(metadata, '') as content,
+    created_at as occurred_at,
+    'https://are.na/channel/' || slug as url
+FROM channels
+"""
+
+[[sources.queries]]
+table = "blocks"
+entry_type = "block"
+action_type = "AddAction"
+object_type = "CreativeWork"
+sql = """
+SELECT
+    id as external_id,
+    COALESCE(title, '') as title,
+    COALESCE(content, '') || ' ' || COALESCE(description, '') as content,
+    created_at as occurred_at,
+    source_url as url
+FROM blocks
+"""
+
+# ============================================================================
+# SOCIAL MEDIA - TWITTER (Raw Archive Format)
+# ============================================================================
+
+[[sources]]
+name = "twitter-mockuser"
+enabled = true
+db_path = "twitter-mockuser/chronicle/chronicle.db"
+category = "social"
+
+[[sources.queries]]
+table = "tweets"
+entry_type = "tweet"
+action_type = "CreateAction"
+object_type = "SocialMediaPosting"
+sql = """
+SELECT
+    id as external_id,
+    substr(full_text, 1, 100) as title,
+    full_text as content,
+    created_at as occurred_at,
+    'https://twitter.com/mockuser/status/' || id as url
+FROM tweets
+"""
+
+[[sources.queries]]
+table = "likes"
+entry_type = "like"
+action_type = "LikeAction"
+object_type = "SocialMediaPosting"
+sql = """
+SELECT
+    tweet_id as external_id,
+    substr(full_text, 1, 100) as title,
+    full_text as content,
+    CAST(((CAST(tweet_id AS INTEGER) >> 22) + 1288834974657) / 1000 AS TEXT) as occurred_at,
+    expanded_url as url
+FROM likes
+"""
+
+[[sources]]
+name = "twitter-testaccount"
+enabled = true
+db_path = "twitter-testaccount/chronicle/chronicle.db"
+category = "social"
+
+[[sources.queries]]
+table = "tweets"
+entry_type = "tweet"
+action_type = "CreateAction"
+object_type = "SocialMediaPosting"
+sql = """
+SELECT
+    id as external_id,
+    substr(full_text, 1, 100) as title,
+    full_text as content,
+    created_at as occurred_at,
+    'https://twitter.com/testaccount/status/' || id as url
+FROM tweets
+"""
+
+[[sources.queries]]
+table = "likes"
+entry_type = "like"
+action_type = "LikeAction"
+object_type = "SocialMediaPosting"
+sql = """
+SELECT
+    tweet_id as external_id,
+    substr(full_text, 1, 100) as title,
+    full_text as content,
+    CAST(((CAST(tweet_id AS INTEGER) >> 22) + 1288834974657) / 1000 AS TEXT) as occurred_at,
+    expanded_url as url
+FROM likes
+"""
+
+# ============================================================================
+# GOOGLE TAKEOUT (Multiple tables in one DB)
+# ============================================================================
+
+[[sources]]
+name = "google-search"
+enabled = true
+db_path = "google-takeout/chronicle/chronicle.db"
+category = "browse"
+
+[[sources.queries]]
+table = "google_search"
+entry_type = "search"
+action_type = "SearchAction"
+object_type = "SearchResultsPage"
+sql = """
+SELECT
+    source_id as external_id,
+    query as title,
+    '' as content,
+    startTime as occurred_at,
+    NULL as url
+FROM google_search
+"""
+
+[[sources]]
+name = "chrome"
+enabled = true
+db_path = "google-takeout/chronicle/chronicle.db"
+category = "browse"
+
+[[sources.queries]]
+table = "chrome_history"
+entry_type = "visit"
+action_type = "ViewAction"
+object_type = "WebPage"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.name') as title,
+    COALESCE(json_extract(object, '$.url'), '') as content,
+    startTime as occurred_at,
+    json_extract(object, '$.url') as url
+FROM chrome_history
+"""
+
+[[sources]]
+name = "youtube"
+enabled = true
+db_path = "google-takeout/chronicle/chronicle.db"
+category = "video"
+
+[[sources.queries]]
+table = "youtube_watch"
+entry_type = "watch"
+action_type = "WatchAction"
+object_type = "VideoObject"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.name') as title,
+    '' as content,
+    startTime as occurred_at,
+    json_extract(object, '$.url') as url
+FROM youtube_watch
+"""
+
+[[sources]]
+name = "gcal"
+enabled = true
+db_path = "google-takeout/chronicle/chronicle.db"
+category = "calendar"
+
+[[sources.queries]]
+table = "calendar"
+entry_type = "event"
+action_type = "AttendAction"
+object_type = "Event"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    COALESCE(description, '') || ' ' || COALESCE(location, '') as content,
+    startDate as occurred_at,
+    NULL as url
+FROM calendar
+"""

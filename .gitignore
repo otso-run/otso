@@ -18,6 +18,11 @@ build/
 *.swp
 *.swo
 
+# Xcode
+*.xcuserstate
+DerivedData/
+*.xcworkspace/xcuserdata/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -87,6 +92,17 @@ public
 # Temporary folders
 tmp/
 temp/
+
+# Otso Data Protection
+# Real user data (contains PII) - NEVER commit
+data/sources/
+data/otso/
+
+# Meilisearch data
+data/meilisearch/
+
+# Keep fixtures (anonymized test data) - safe to commit
+!data/fixtures/
 
 # Allow specific docs assets within package public folders
 !packages/otso.run/public/robots.txt
