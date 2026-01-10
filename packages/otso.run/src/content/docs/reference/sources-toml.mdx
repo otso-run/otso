@@ -127,14 +127,17 @@ strategy = "daily"
 key_fields = ["title"]
 ```
 
-<Aside type="note">
-Aggregation is defined in the config but not yet implemented. High-volume sources will be processed at full resolution.
-</Aside>
+Available strategies:
+
+- **daily** — Group events by date + key fields (e.g., 2.2M records → ~50K daily aggregates)
+- **hourly** — Group events by hour + key fields
+- **session** — Group events with gaps less than `time_bucket` seconds (default 30 minutes)
 
 | Field | Description |
 |-------|-------------|
-| `strategy` | Aggregation period: `daily`, `hourly`, `weekly` |
+| `strategy` | Aggregation period: `daily`, `hourly`, `session`, or `none` |
 | `key_fields` | Fields to group by |
+| `time_bucket` | For session strategy: gap threshold in seconds (default 1800 = 30 min) |
 
 ## Configured Sources
 
