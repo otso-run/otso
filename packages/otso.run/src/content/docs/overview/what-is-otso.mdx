@@ -5,56 +5,97 @@ sidebar:
   order: 1
 ---
 
-Otso is a local‑first toolkit that helps you own your content and activity across the web. It lets you publish to your own site, optionally cross‑post elsewhere (POSSE), import archives back into your own store (PESOS), and keep everything searchable and under your control.
+import { Aside } from '@astrojs/starlight/components';
 
-## What you get
+Otso is a local‑first toolkit that helps you own your content and activity across the web. It indexes your digital trails from dozens of sources and makes them searchable on your machine.
 
-- A simple, durable store (SQLite or Postgres) that lives with you.
-- A CLI to import, publish, and maintain your archive with idempotent, safe commands.
-- A lightweight web UI for composing content and managing accounts (planned).
-- Clean, standards‑based output for your site (Microformats2, Micropub, Webmention).
-- An event‑driven core and plugin API to extend imports, enrichment, and publishing.
+## Current Components
 
-## Components at a glance
+These components are working today:
 
-- CLI: import archives and APIs; run enrichment; publish; snapshot and restore.
-- Web dashboard: a local interface to compose posts, review imports, manage accounts.
-- Site: your public site that renders posts with Microformats2 and supports Webmention.
-- Plugins: small adapters for new sources (e.g., GitHub, Mastodon, Bluesky) or outputs.
+### otso-indexer (Rust)
 
-## Supported content types (post “kinds”)
+The indexer reads data from SQLite databases and builds a unified, searchable event store.
 
-Notes, articles, photos, replies, reposts, likes, bookmarks, highlights, check‑ins, and RSVPs. These map to IndieWeb post kinds and use Microformats2 classes in HTML so the data is portable and machine‑readable.
+- **Configuration-driven** — Add sources via `sources.toml`, no code changes needed
+- **Parallel processing** — Indexes multiple sources concurrently
+- **Transaction-safe** — Batch operations with automatic rollback on failure
+- **Robust parsing** — Handles 15+ timestamp formats automatically
 
-## Standards used
+### otso-search (SvelteKit)
 
-- Micropub for publishing to your own site.
-- IndieAuth for authentication to your site.
-- Microformats2 for semantic HTML.
-- Webmention for sending/receiving conversations across sites.
+A web UI for searching your indexed data.
+
+- **Full-text search** — FTS5-powered search across all sources
+- **Timeline histogram** — Visual overview of your activity over time
+- **Category filters** — Filter by source type (reading, music, social, etc.)
+- **Keyboard navigation** — Arrow keys, Enter to open, Escape to close
+
+```
+┌─────────────────────────────────────────────────┐
+│  SOURCE DATA (SQLite databases)                 │
+│  Twitter, Pinboard, Spotify, GitHub, etc.       │
+└───────────────────────┬─────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────┐
+│  otso-indexer (Rust)                            │
+│  Configurable via sources.toml                  │
+└───────────────────────┬─────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────┐
+│  Event Store + FTS5 Search Index (SQLite)       │
+└───────────────────────┬─────────────────────────┘
+                        ▼
+┌─────────────────────────────────────────────────┐
+│  otso-search (SvelteKit)                        │
+│  Timeline · Filters · Full-text search          │
+└─────────────────────────────────────────────────┘
+```
+
+## Planned Components
+
+<Aside type="note">
+These features are on the roadmap but not yet implemented.
+</Aside>
+
+- **CLI** — Commands for import, publish, and maintenance (`otso import`, `otso publish`)
+- **Web dashboard** — Compose posts, review imports, manage accounts
+- **Site generator** — Render posts with Microformats2 and Webmention support
+- **Live API connectors** — PESOS import from Mastodon, Bluesky, and more
+
+## Supported content types
+
+The indexer extracts events matching these types:
+
+| Type | Examples |
+|------|----------|
+| Bookmarks | Pinboard saves, Readwise highlights |
+| Listens | Spotify plays, Last.fm scrobbles |
+| Notes | Apple Notes, Notion pages |
+| Posts | Tweets, toots, skeets |
+| Photos | Apple Photos with location/description |
+| Check-ins | Foursquare visits |
+| Tasks | Things to-dos |
+| Events | Calendar entries |
+| Code | GitHub commits, issues, PRs |
 
 ## Visibility & privacy
 
 Every item can carry a visibility: `public`, `unlisted`, `private`, or `secret`.
-- Public: appears on your site and feeds.
-- Unlisted: link‑accessible but not in indexes or feeds.
-- Private: visible only to you in tools; never published.
-- Secret: private plus extra handling (redaction, encryption, or separate storage).
 
-Search and projections follow strict rules: do not index private/secret payloads, and never store secrets in search indexes. Keep credentials in env vars or OS keychains.
+- **Public**: included in search results
+- **Unlisted**: searchable but not in feeds
+- **Private**: visible only in local tools
+- **Secret**: excluded from search indexes entirely
+
+The search projection enforces these rules—private and secret items are never indexed.
 
 ## Quick mental model
 
 Think of Otso as an append‑only event log plus projections:
-- Sources (APIs/archives) → events (imported, enriched, published).
-- Projections (tables, JSON, indexes) are rebuildable views for speed.
-- The site and API layers are thin; most logic lives in the core and plugins.
 
-This makes it fast, reliable, and easy to extend without losing control of your data.
+1. **Sources** (SQLite databases with your data)
+2. **Events** (normalized records in a unified store)
+3. **Projections** (FTS5 search index, timeline views)
 
-Otso is a local‑first toolkit to own your content, publish anywhere, and stay the source using open standards like Micropub and Webmention.
-
-Topics to cover next:
-- Components overview (CLI, Web, Site)
-- Core goals and principles
-- Example end‑to‑end flow
+Projections are rebuildable. If something goes wrong, rebuild from the event store.

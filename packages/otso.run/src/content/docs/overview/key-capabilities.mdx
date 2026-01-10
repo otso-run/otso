@@ -5,42 +5,99 @@ sidebar:
   order: 3
 ---
 
-## Compose & publish
+import { Aside } from '@astrojs/starlight/components';
 
-Create notes, articles, photos, replies, and more. Publish to your site via Micropub. Cross‑post (POSSE) to networks like Mastodon or Bluesky while keeping your site as the canonical source with proper backlinks.
+## Available Now
 
-## Import & archive (PESOS)
+### Full-text search across sources
 
-Import your existing history from APIs or exports (Twitter/X archive, Mastodon, GitHub, bookmarks). Imports are idempotent and de‑duplicated, so you can re‑run safely. Normalize inputs into consistent “kinds” so everything is queryable.
+Search your entire digital history from one place. The FTS5-powered search index handles:
 
-## Enrich & organize
+- **Instant results** — Type and see matches immediately
+- **Snippet highlighting** — See where your query matched
+- **Ranked results** — Most relevant items first
+- **Empty query browsing** — See recent items when no search term
 
-Run enrichment pipelines to clean web pages (Defuddle‑style readability), generate alt‑text, extract tags, and create summaries. You decide what to keep; Otso records provenance so you can re‑enrich later with better models.
+### Timeline visualization
 
-## Webmention & backfeed
+See your activity over time with an interactive histogram:
 
-Send and receive webmentions for replies, likes, and reposts. Show conversations on your own site and reconcile mentions with imported events to avoid duplicates.
+- **Monthly buckets** — Aggregated view of when things happened
+- **Source breakdown** — Color-coded by data source
+- **Date range selection** — Click to filter by time period
+- **Category stacking** — See which sources dominated each period
 
-## Data safety first
+### Multi-source indexing
 
-- Snapshots before big operations; restore if needed.
-- Idempotent commands; dry‑run modes for risky actions.
-- Clear boundaries: never put secrets in public projections or search indexes.
+Index data from 23+ configured sources:
 
-## Search, projections, and speed
+| Category | Sources |
+|----------|---------|
+| Reading | Pinboard, Readwise |
+| Music | Spotify, Last.fm, Apple Podcasts |
+| Social | Twitter/X archives, LinkedIn messages |
+| Productivity | Things tasks, Timing app usage |
+| Browse | Safari, Chrome, Google Search |
+| Notes | Apple Notes, Notion |
+| Photos | Apple Photos |
+| Location | Foursquare check-ins |
+| Code | GitHub activity |
+| AI | Claude conversations |
+| Curation | Are.na blocks and channels |
+| Video | YouTube watch history |
+| Calendar | Google Calendar events |
 
-Otso treats search and derived views as rebuildable. Keep a small, canonical store (SQLite/Postgres) and generate projections (tables, JSON, full‑text index) tuned for your UI. If something goes wrong, rebuild from the event log.
+### Category and source filtering
 
-## Plugins and SDK
+Filter search results by:
 
-Small, focused plugins add new sources or publishers. The core offers utilities for pagination, rate limiting, media handling, and idempotency, so plugins stay tiny.
+- **Categories** — Click to show only music, or only notes
+- **Individual sources** — Drill down to just Pinboard or just Spotify
+- **Exclusion mode** — Hide specific sources from results
 
-## Visibility controls
+### Configuration-driven extraction
 
-Apply visibility per item: public, unlisted, private, or secret. Projections and publishers enforce these rules so you can import fearlessly and decide later what to share.
+Add new sources without code changes:
 
-- Compose & publish notes, articles, photos, replies, and more.
-- Import archives (PESOS) and syndicate out (POSSE).
-- Enrich content (Defuddle, alt‑text, tags) and manage media.
-- Webmention send/receive and backfeed.
-- Data safety: snapshots, repair, and transparent logs.
+```toml
+[[sources]]
+name = "my-source"
+enabled = true
+db_path = "my-source/chronicle/chronicle.db"
+
+[[sources.queries]]
+sql = "SELECT id, title, content, created_at FROM items"
+```
+
+---
+
+## On the Roadmap
+
+<Aside type="note">
+These features are planned but not yet implemented.
+</Aside>
+
+### Compose & publish
+
+Create notes, articles, photos, replies, and more. Publish to your site via Micropub. Cross‑post (POSSE) to networks like Mastodon or Bluesky.
+
+### Live API import (PESOS)
+
+Import your existing history from live APIs (Mastodon, Bluesky, GitHub). Run on a schedule to keep your archive current.
+
+### Enrich & organize
+
+Run enrichment pipelines to clean web pages (Defuddle‑style readability), generate alt‑text, extract tags, and create summaries.
+
+### Webmention & backfeed
+
+Send and receive webmentions for replies, likes, and reposts. Show conversations on your own site.
+
+### CLI commands
+
+Full command-line interface for:
+
+- `otso import <source>` — Pull from APIs and archives
+- `otso publish <file>` — Send to your site and syndicate
+- `otso search <query>` — Search from the terminal
+- `otso snapshot` — Backup before risky operations

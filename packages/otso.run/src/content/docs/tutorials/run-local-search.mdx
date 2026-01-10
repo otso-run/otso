@@ -1,0 +1,227 @@
+---
+title: Run Local Search
+description: Set up the Otso indexer and search UI on your machine.
+sidebar:
+  order: 1
+---
+
+import { Steps, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+This tutorial walks you through setting up Otso's indexer and search UI on your machine. By the end, you'll have a local search interface for your digital history.
+
+## Prerequisites
+
+Before starting, ensure you have:
+
+- **Rust 1.70+** — Install from [rustup.rs](https://rustup.rs)
+- **Node.js 18+** — Install from [nodejs.org](https://nodejs.org)
+- **pnpm** — Install with `npm install -g pnpm`
+- **Git** — For cloning the repository
+
+## Quick Start
+
+<Steps>
+
+1. **Clone the repository**
+
+   ```bash
+   git clone https://github.com/yourusername/otso.git
+   cd otso
+   ```
+
+2. **Install Node dependencies**
+
+   ```bash
+   pnpm install
+   ```
+
+3. **Build the Rust indexer**
+
+   ```bash
+   cd packages/otso-indexer
+   cargo build --release
+   ```
+
+4. **Run the indexer with demo data**
+
+   The repository includes fixture data for testing:
+
+   ```bash
+   cargo run --release -- -c ../../data/config/sources.toml build
+   ```
+
+   You should see output like:
+
+   ```
+   INFO Loaded 23 source configurations
+   INFO Building 23 sources
+   INFO   pinboard events: 15 inserted, 0 skipped
+   INFO   spotify events: 25 inserted, 0 skipped
+   ...
+   INFO Updating projections...
+   ```
+
+5. **Start the search UI**
+
+   ```bash
+   cd ../otso-search
+   pnpm dev
+   ```
+
+6. **Open the search interface**
+
+   Navigate to [http://localhost:5173](http://localhost:5173) in your browser.
+
+</Steps>
+
+## Using the Search UI
+
+### Basic Search
+
+Type in the search box to find items across all sources. Results appear instantly as you type.
+
+- **Empty search** shows recent items
+- **Search terms** are matched against title and content
+- **Snippets** highlight where your query matched
+
+### Timeline Histogram
+
+Click the histogram icon to see your activity over time:
+
+- Each bar represents a month
+- Colors indicate different sources
+- Click a bar to filter by that time period
+- Click again to clear the filter
+
+### Category Filters
+
+Filter by content type using the category chips:
+
+| Category | What it includes |
+|----------|-----------------|
+| Reading | Bookmarks, highlights |
+| Music | Listens from Spotify, Last.fm |
+| Social | Tweets, toots, messages |
+| Notes | Apple Notes, Notion pages |
+| Browse | Browser history, searches |
+| Code | GitHub activity |
+
+### Keyboard Navigation
+
+- **↑/↓** — Move through results
+- **Enter** — Open selected item
+- **Escape** — Close document modal
+- **/** — Focus search box
+
+## Adding Your Own Data
+
+### Data Format Requirements
+
+Otso expects your data in SQLite databases. Each source database should have tables that can be queried for:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `external_id` | Yes | Unique identifier within the source |
+| `title` | Yes | Display title for the item |
+| `content` | No | Full text content for search |
+| `occurred_at` | Yes | Timestamp (Unix epoch or ISO 8601) |
+| `url` | No | Link to original item |
+
+### Adding a New Source
+
+<Steps>
+
+1. **Place your database**
+
+   Create a directory for your source and place the database inside:
+
+   ```bash
+   mkdir -p data/sources/my-source/chronicle
+   cp ~/my-data.db data/sources/my-source/chronicle/chronicle.db
+   ```
+
+2. **Add configuration**
+
+   Edit `data/config/sources.toml`:
+
+   ```toml
+   [[sources]]
+   name = "my-source"
+   enabled = true
+   db_path = "my-source/chronicle/chronicle.db"
+   category = "notes"  # Choose: reading, music, social, notes, etc.
+
+   [[sources.queries]]
+   table = "items"
+   entry_type = "note"
+   action_type = "CreateAction"
+   object_type = "NoteDigitalDocument"
+   sql = """
+   SELECT
+       id as external_id,
+       title,
+       body as content,
+       created_at as occurred_at,
+       NULL as url
+   FROM items
+   """
+   ```
+
+3. **Switch to production data directory**
+
+   In `sources.toml`, change the data directory:
+
+   ```toml
+   [defaults]
+   data_dir = "data/sources"  # Changed from "data/fixtures"
+   ```
+
+4. **Rebuild the index**
+
+   ```bash
+   cd packages/otso-indexer
+   cargo run --release -- build
+   ```
+
+5. **Refresh the search UI**
+
+   Your new source should appear in the category filters.
+
+</Steps>
+
+## Troubleshooting
+
+### "Table not found" error
+
+Check that the table name in your SQL matches what's in your database:
+
+```bash
+sqlite3 data/sources/my-source/chronicle/chronicle.db ".tables"
+```
+
+### No results appearing
+
+Verify events were indexed:
+
+```bash
+cargo run --release -- stats
+```
+
+This shows event counts per source.
+
+### Timestamp parsing issues
+
+The indexer handles many formats automatically:
+
+- Unix timestamps (seconds or milliseconds)
+- ISO 8601 (`2024-01-15T10:30:00Z`)
+- Date strings (`2024-01-15`)
+- Various locale formats
+
+If parsing fails, events default to the current time with a warning.
+
+## Next Steps
+
+- [Configure more sources](/reference/sources-toml/) — Full reference for `sources.toml`
+- [Understand the event model](/reference/event-model/) — How data is stored internally
+- [See the roadmap](/overview/key-capabilities/#on-the-roadmap) — What's coming next

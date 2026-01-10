@@ -1,74 +1,68 @@
 ---
 title: Otso
-description: Local-first IndieWeb toolkit for archiving, syncing, harmonizing, and publishing your internet trails and streams.
+description: Local-first toolkit for archiving, searching, and owning your digital trails.
 template: splash
 hero:
-  tagline: Local-first IndieWeb toolkit for archiving, syncing, harmonizing, and publishing your internet trails and streams.
+  tagline: Archive your digital life. Search everything locally. Own your data.
   image:
     file: ../../assets/otso.png
   actions:
+    - text: Run Local Search
+      link: /tutorials/run-local-search/
+      icon: rocket
     - text: What is Otso?
       link: /overview/what-is-otso/
       icon: open-book
-    - text: Quickstart
-      link: /tutorials/quickstart-install-publish/
-      icon: rocket
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { Card, CardGrid, Aside } from '@astrojs/starlight/components';
 
-## Start here
+<Aside type="tip" title="What's Working Now">
+Otso can index 23+ data sources and search them locally via a web UI. Clone the repo, build the indexer, and start searching in minutes.
+</Aside>
+
+## Available Now
+
+<CardGrid>
+        <Card title="Run Local Search" icon="magnifier">
+          Index your data and search it locally.
+
+          - [Set up the indexer and search UI](/tutorials/run-local-search/)
+          - [Configure data sources](/reference/sources-toml/)
+          - Browse Twitter archives, bookmarks, notes, and more
+        </Card>
+        <Card title="23+ Data Sources" icon="puzzle">
+          Pre-configured extractors for common platforms.
+
+          - **Reading**: Pinboard, Readwise
+          - **Music**: Spotify, Last.fm, Apple Podcasts
+          - **Social**: Twitter/X archives, LinkedIn
+          - **Notes**: Apple Notes, Notion
+          - **Code**: GitHub activity
+          - [Full source list](/reference/sources-toml/#configured-sources)
+        </Card>
+</CardGrid>
+
+## Learn More
 
 <CardGrid stagger>
-        <Card title="Quickstarts" icon="rocket">
-          Simple real-world scenarios.
-
-          - 🐦 [Archive a Twitter/X export and publish to your own site](/tutorials/quickstart-install-publish/#archive-a-twitterx-export-and-publish-to-your-own-site)
-          - 🐘 [Automatically sync your Mastodon posts, likes, and replies](/tutorials/quickstart-install-publish/#automatically-sync-your-mastodon-posts-likes-and-replies-to-your-website-and-local-storage)
-          - 🔄 [Publish a note on your website and cross-post it to Bluesky and Mastodon](/tutorials/quickstart-install-publish/#publish-a-note-on-your-website-and-cross-post-it-to-bluesky-and-mastodon)
-          - 🔖 [Tag your bookmarks from Pinboard and Readwise using a local AI model](/tutorials/quickstart-install-publish/#tag-your-bookmarks-from-pinboard-and-readwise-using-a-local-ai-model)
-          - 📸 [Generate searchable descriptions from your screenshots folder](/tutorials/quickstart-install-publish/#generate-searchable-descriptions-from-your-screenshots-folder)
-          - 🎧 [Visualize your music listening across sites](/tutorials/quickstart-install-publish/#visualize-your-music-listening-across-sites)
-          - ❓ [Ask questions of your Notion docs using a local AI model](/tutorials/quickstart-install-publish/#ask-questions-of-your-notion-docs-using-a-local-ai-model)
-          - 🌧️ [Migrate bookmarks from Pinboard to Raindrop with a searchable local copy](/tutorials/quickstart-install-publish/#migrate-pinboard-bookmarks-to-raindrop-with-a-searchable-local-copy)
-        </Card>
         <Card title="Overview" icon="information">
                 What Otso is and why it matters.
-		
+
 		– [What is Otso?](/overview/what-is-otso/)
-		
+
 		– [Key capabilities](/overview/key-capabilities/)
 
-		– [Ecosystem — Alternatives & Inspirations](/explanations/ecosystem-alternatives-inspirations/)
+		– [Architecture](/overview/architecture/)
 	</Card>
-        <Card title="Tutorials" icon="mortar-board">
-                Step‑by‑step introductions.
-
-                – [Quickstart](/tutorials/quickstart-install-publish/)
-
-                – [Build a simple site](/tutorials/build-simple-site-microformats/)
-
-                – [Set up POSSE to Mastodon](/tutorials/setup-posse-mastodon/)
-        </Card>
-        <Card title="Guides" icon="list-format">
-                Task‑oriented recipes.
-
-                – [Import from GitHub](/guides/import-github/)
-
-                – [Import from Bluesky](/guides/import-bluesky/)
-
-                – [Publish to Mastodon](/guides/publish-mastodon/)
-        </Card>
         <Card title="Reference" icon="document">
-                Exact behavior, specs, and supporting material.
+                Configuration and internals.
 
-                – [CLI commands](/reference/cli-commands/)
+                – [sources.toml format](/reference/sources-toml/)
 
                 – [Event model](/reference/event-model/)
 
                 – [Schema mappings](/reference/data-schema-mappings/)
-
-                – [Plugin architecture](/reference/plugin-architecture/)
         </Card>
         <Card title="Explanations" icon="comment">
                 Concepts and trade‑offs.
@@ -78,5 +72,31 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
                 – [Local‑first choices](/explanations/local-first-choices/)
 
                 – [Event‑driven design](/explanations/event-driven-design/)
+        </Card>
+        <Card title="Ecosystem" icon="external">
+                Alternatives and inspirations.
+
+                – [Related projects](/explanations/ecosystem-alternatives-inspirations/)
+        </Card>
+</CardGrid>
+
+## Roadmap
+
+These features are planned but not yet implemented:
+
+<CardGrid>
+        <Card title="Publishing" icon="pencil">
+          Planned: CLI and web UI for publishing.
+
+          - `otso publish` command
+          - Micropub support
+          - POSSE to Mastodon/Bluesky
+        </Card>
+        <Card title="Live Import" icon="download">
+          Planned: Pull from live APIs.
+
+          - PESOS from Mastodon
+          - Automatic sync jobs
+          - Webmention backfeed
         </Card>
 </CardGrid>
