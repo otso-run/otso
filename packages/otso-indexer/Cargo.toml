@@ -1,0 +1,44 @@
+[package]
+name = "otso-indexer"
+version = "0.1.0"
+edition = "2021"
+authors = ["Cameron Griggs"]
+description = "Data indexer for Otso - ingests events and builds search projections"
+license = "MIT"
+repository = "https://github.com/cag/otso"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Meilisearch client (optional)
+meilisearch-sdk = { version = "0.27", optional = true }
+
+[features]
+default = []
+meilisearch = ["meilisearch-sdk"]
+
+[[bin]]
+name = "otso-indexer"
+path = "src/main.rs"

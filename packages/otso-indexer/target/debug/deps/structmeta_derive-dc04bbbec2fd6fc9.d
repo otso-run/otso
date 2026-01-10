@@ -1,0 +1,10 @@
+/Users/cag/GitHub/otso/packages/otso-indexer/target/debug/deps/libstructmeta_derive-dc04bbbec2fd6fc9.dylib: /Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/lib.rs /Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/syn_utils.rs /Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/parse.rs /Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/struct_meta.rs /Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/to_tokens.rs /Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/to_tokens_attribute.rs
+
+/Users/cag/GitHub/otso/packages/otso-indexer/target/debug/deps/structmeta_derive-dc04bbbec2fd6fc9.d: /Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/lib.rs /Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/syn_utils.rs /Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/parse.rs /Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/struct_meta.rs /Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/to_tokens.rs /Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/to_tokens_attribute.rs
+
+/Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/lib.rs:
+/Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/syn_utils.rs:
+/Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/parse.rs:
+/Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/struct_meta.rs:
+/Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/to_tokens.rs:
+/Users/cag/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/structmeta-derive-0.3.0/src/to_tokens_attribute.rs:
