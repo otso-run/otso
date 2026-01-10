@@ -7,6 +7,55 @@ use crate::event_store::{Event, EventType, Visibility};
 
 use super::timestamp::parse_timestamp;
 
+/// Validate SQL query before execution
+/// Returns Ok(()) if valid, Err with descriptive message if invalid
+async fn validate_query(pool: &SqlitePool, query: &QueryConfig) -> Result<()> {
+    // Check if table exists
+    if !query.table.is_empty() {
+        let table_check = sqlx::query(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+        )
+        .bind(&query.table)
+        .fetch_optional(pool)
+        .await
+        .context("Failed to check table existence")?;
+
+        if table_check.is_none() {
+            anyhow::bail!(
+                "Table '{}' not found in database. Available tables can be listed with: \
+                 SELECT name FROM sqlite_master WHERE type='table'",
+                query.table
+            );
+        }
+    }
+
+    // Validate SQL syntax using EXPLAIN
+    let explain_sql = format!("EXPLAIN {}", query.sql);
+    if let Err(e) = sqlx::query(&explain_sql).fetch_all(pool).await {
+        let error_msg = e.to_string();
+
+        // Provide helpful suggestions based on common errors
+        let suggestion = if error_msg.contains("no such table") {
+            "Check that the table name is correct and exists in the database."
+        } else if error_msg.contains("no such column") {
+            "Check that all column names are spelled correctly and exist in the table."
+        } else if error_msg.contains("syntax error") {
+            "Check SQL syntax. Common issues: missing commas, unbalanced quotes, typos."
+        } else {
+            "Review the SQL query for errors."
+        };
+
+        anyhow::bail!(
+            "SQL validation failed for query '{}': {}\n  Suggestion: {}",
+            query.entry_type,
+            error_msg,
+            suggestion
+        );
+    }
+
+    Ok(())
+}
+
 /// Extract events from a SQLite database using the configured query
 pub async fn extract_from_sqlite(
     db_path: &str,
@@ -18,6 +67,11 @@ pub async fn extract_from_sqlite(
     let pool = SqlitePool::connect(&db_url)
         .await
         .with_context(|| format!("Failed to connect to database: {}", db_path))?;
+
+    // Validate query before execution
+    validate_query(&pool, query)
+        .await
+        .with_context(|| format!("Query validation failed for source '{}'", source_name))?;
 
     let rows = sqlx::query(&query.sql)
         .fetch_all(&pool)
