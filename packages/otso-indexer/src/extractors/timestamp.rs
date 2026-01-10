@@ -24,7 +24,7 @@ pub fn parse_timestamp(s: &str) -> Option<i64> {
         return Some(dt.timestamp());
     }
 
-    // ISO 8601 variants
+    // ISO 8601 variants (with time)
     for fmt in &[
         "%Y-%m-%dT%H:%M:%S%.f%:z", // With fractional seconds and timezone
         "%Y-%m-%dT%H:%M:%S%:z",    // Without fractional
@@ -33,11 +33,18 @@ pub fn parse_timestamp(s: &str) -> Option<i64> {
         "%Y-%m-%dT%H:%M:%S",       // No timezone
         "%Y-%m-%d %H:%M:%S%.f",    // Space separator with fractional
         "%Y-%m-%d %H:%M:%S",       // Space separator
-        "%Y-%m-%d",                // Date only
     ] {
         if let Ok(dt) = NaiveDateTime::parse_from_str(s, fmt) {
             return Some(Utc.from_utc_datetime(&dt).timestamp());
         }
+    }
+
+    // ISO 8601 date only (no time component) - must use NaiveDate, not NaiveDateTime
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        return Some(
+            Utc.from_utc_datetime(&date.and_hms_opt(0, 0, 0).unwrap())
+                .timestamp(),
+        );
     }
 
     // RFC 2822 (email format: "Mon, 15 Jan 2024 10:30:00 +0000")
@@ -120,28 +127,100 @@ mod tests {
         assert!(parse_timestamp("2024-01-15T10:30:00Z").is_some());
         assert!(parse_timestamp("2024-01-15T10:30:00+00:00").is_some());
         assert!(parse_timestamp("2024-01-15T10:30:00.123Z").is_some());
+        assert!(parse_timestamp("2024-01-15T10:30:00-05:00").is_some());
+    }
+
+    #[test]
+    fn test_parse_iso8601_consistency() {
+        // Same moment in time expressed different ways should produce same timestamp
+        let utc = parse_timestamp("2024-01-15T10:30:00Z").unwrap();
+        let offset = parse_timestamp("2024-01-15T10:30:00+00:00").unwrap();
+        assert_eq!(utc, offset);
     }
 
     #[test]
     fn test_parse_unix() {
         assert_eq!(parse_timestamp("1705315800"), Some(1705315800));
         assert_eq!(parse_timestamp("1705315800000"), Some(1705315800)); // Milliseconds
+        assert_eq!(parse_timestamp("1705315800.0"), Some(1705315800)); // Float
+        assert_eq!(parse_timestamp("1705315800.123"), Some(1705315800)); // Float with fractional
     }
 
     #[test]
     fn test_parse_date_only() {
-        assert!(parse_timestamp("2024-01-15").is_some());
+        let ts = parse_timestamp("2024-01-15").unwrap();
+        // Date-only should default to midnight UTC
+        let dt = DateTime::from_timestamp(ts, 0).unwrap();
+        assert_eq!(dt.format("%Y-%m-%d").to_string(), "2024-01-15");
+        assert_eq!(dt.format("%H:%M:%S").to_string(), "00:00:00");
+    }
+
+    #[test]
+    fn test_parse_date_with_time_space_separator() {
+        assert!(parse_timestamp("2024-01-15 10:30:00").is_some());
+        assert!(parse_timestamp("2024-01-15 10:30:00.123").is_some());
     }
 
     #[test]
     fn test_parse_rfc2822() {
         assert!(parse_timestamp("Mon, 15 Jan 2024 10:30:00 +0000").is_some());
+        assert!(parse_timestamp("Tue, 16 Jan 2024 15:45:30 -0500").is_some());
+    }
+
+    #[test]
+    fn test_parse_twitter_format() {
+        // Twitter archive format: "Fri Oct 11 03:24:39 +0000 2024"
+        let ts = parse_timestamp("Fri Oct 11 03:24:39 +0000 2024");
+        assert!(ts.is_some());
+    }
+
+    #[test]
+    fn test_parse_us_date_formats() {
+        assert!(parse_timestamp("Jan 15, 2024").is_some());
+        assert!(parse_timestamp("January 15, 2024").is_some());
+        assert!(parse_timestamp("01/15/2024").is_some());
+        assert!(parse_timestamp("01/15/2024 10:30:00").is_some());
+    }
+
+    #[test]
+    fn test_parse_slash_date_formats() {
+        assert!(parse_timestamp("2024/01/15").is_some());
+        assert!(parse_timestamp("2024/01/15 10:30:00").is_some());
+    }
+
+    #[test]
+    fn test_whitespace_handling() {
+        // Should trim whitespace
+        assert!(parse_timestamp("  2024-01-15  ").is_some());
+        assert!(parse_timestamp("\t2024-01-15\n").is_some());
     }
 
     #[test]
     fn test_invalid() {
         assert!(parse_timestamp("").is_none());
+        assert!(parse_timestamp("   ").is_none());
         assert!(parse_timestamp("not a date").is_none());
         assert!(parse_timestamp("-1").is_none());
+        assert!(parse_timestamp("0").is_none());
+        // Timestamp before 1970 should be rejected
+        assert!(parse_timestamp("-1000000000").is_none());
+    }
+
+    #[test]
+    fn test_boundary_timestamps() {
+        // Valid: January 1, 2000
+        assert_eq!(parse_timestamp("946684800"), Some(946684800));
+        // Valid: Recent timestamp
+        assert_eq!(parse_timestamp("1700000000"), Some(1700000000));
+        // Invalid: Too far in the future (year 2200+)
+        assert!(parse_timestamp("7258118400").is_none());
+    }
+
+    #[test]
+    fn test_ordering() {
+        // Earlier date should have smaller timestamp
+        let jan = parse_timestamp("2024-01-15T00:00:00Z").unwrap();
+        let feb = parse_timestamp("2024-02-15T00:00:00Z").unwrap();
+        assert!(jan < feb);
     }
 }

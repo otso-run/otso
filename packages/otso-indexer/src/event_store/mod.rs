@@ -399,3 +399,195 @@ impl SqliteEventStore {
         Ok(events)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    async fn create_test_store() -> (SqliteEventStore, TempDir) {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let store = SqliteEventStore::open(temp_dir.path().to_str().unwrap())
+            .await
+            .expect("Failed to open store");
+        (store, temp_dir)
+    }
+
+    fn create_test_event(source: &str, source_id: &str) -> Event {
+        Event {
+            event_id: Uuid::new_v4(),
+            event_type: EventType::Ingest,
+            source: source.to_string(),
+            source_id: source_id.to_string(),
+            action_type: Some("TestAction".to_string()),
+            object_type: Some("TestObject".to_string()),
+            payload: serde_json::json!({"test": "value"}),
+            visibility: Visibility::Public,
+            occurred_at: 1705315800,
+            ingested_at: 0,
+            batch_id: None,
+            deleted_at: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_event_store_open() {
+        let (store, _temp_dir) = create_test_store().await;
+        let count = store.count_total().await.expect("Failed to count");
+        assert_eq!(count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_batch_transaction() {
+        let (store, _temp_dir) = create_test_store().await;
+
+        // Begin a batch
+        let tx = store.begin_batch("test-source").await.expect("Failed to begin batch");
+        assert_eq!(tx.source, "test-source");
+
+        // Append an event
+        let event = create_test_event("test-source", "event-1");
+        store.append(&tx, event).await.expect("Failed to append");
+
+        // Commit
+        let stats = store.commit(tx).await.expect("Failed to commit");
+        assert_eq!(stats.inserted, 1);
+
+        // Verify event was stored
+        let count = store.count_by_source("test-source").await.expect("Failed to count");
+        assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_batch_multiple_events() {
+        let (store, _temp_dir) = create_test_store().await;
+
+        let tx = store.begin_batch("test-source").await.expect("Failed to begin batch");
+
+        // Append multiple events
+        for i in 0..10 {
+            let event = create_test_event("test-source", &format!("event-{}", i));
+            store.append(&tx, event).await.expect("Failed to append");
+        }
+
+        let stats = store.commit(tx).await.expect("Failed to commit");
+        assert_eq!(stats.inserted, 10);
+
+        let count = store.count_total().await.expect("Failed to count");
+        assert_eq!(count, 10);
+    }
+
+    #[tokio::test]
+    async fn test_deduplication() {
+        let (store, _temp_dir) = create_test_store().await;
+
+        // First batch
+        let tx = store.begin_batch("test-source").await.expect("Failed to begin batch");
+        let event = create_test_event("test-source", "same-id");
+        store.append(&tx, event).await.expect("Failed to append");
+        store.commit(tx).await.expect("Failed to commit");
+
+        // Second batch with same source_id - should be ignored
+        let tx2 = store.begin_batch("test-source").await.expect("Failed to begin batch");
+        let event2 = create_test_event("test-source", "same-id");
+        store.append(&tx2, event2).await.expect("Failed to append");
+        let stats = store.commit(tx2).await.expect("Failed to commit");
+
+        // Should be 0 because duplicate was ignored
+        assert_eq!(stats.inserted, 0);
+
+        // Total should still be 1
+        let count = store.count_total().await.expect("Failed to count");
+        assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_rollback() {
+        let (store, _temp_dir) = create_test_store().await;
+
+        // Begin a batch and add events
+        let tx = store.begin_batch("test-source").await.expect("Failed to begin batch");
+        let event = create_test_event("test-source", "event-1");
+        store.append(&tx, event).await.expect("Failed to append");
+        let stats = store.commit(tx).await.expect("Failed to commit");
+        assert_eq!(stats.inserted, 1);
+
+        // Rollback the batch
+        let rolled_back = store.rollback_batch(stats.batch_id).await.expect("Failed to rollback");
+        assert_eq!(rolled_back, 1);
+
+        // Count should be 0 (soft deleted)
+        let count = store.count_total().await.expect("Failed to count");
+        assert_eq!(count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_sync_state() {
+        let (store, _temp_dir) = create_test_store().await;
+
+        // No sync state initially
+        let state = store.get_sync_state("test-source").await.expect("Failed to get state");
+        assert!(state.is_none());
+
+        // After committing a batch, sync state should be updated
+        let tx = store.begin_batch("test-source").await.expect("Failed to begin batch");
+        let event = create_test_event("test-source", "event-1");
+        store.append(&tx, event).await.expect("Failed to append");
+        store.commit(tx).await.expect("Failed to commit");
+
+        let state = store.get_sync_state("test-source").await.expect("Failed to get state");
+        assert!(state.is_some());
+        let state = state.unwrap();
+        assert_eq!(state.source, "test-source");
+        assert_eq!(state.total_events, 1);
+        assert!(state.last_sync_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_visibility_filtering() {
+        let (store, _temp_dir) = create_test_store().await;
+
+        let tx = store.begin_batch("test-source").await.expect("Failed to begin batch");
+
+        // Add public event
+        let mut public_event = create_test_event("test-source", "public-1");
+        public_event.visibility = Visibility::Public;
+        store.append(&tx, public_event).await.expect("Failed to append");
+
+        // Add secret event
+        let mut secret_event = create_test_event("test-source", "secret-1");
+        secret_event.visibility = Visibility::Secret;
+        store.append(&tx, secret_event).await.expect("Failed to append");
+
+        store.commit(tx).await.expect("Failed to commit");
+
+        // Total count includes both
+        let total = store.count_total().await.expect("Failed to count");
+        assert_eq!(total, 2);
+
+        // Stream projectable should exclude secret
+        let projectable = store.stream_projectable().await.expect("Failed to stream");
+        assert_eq!(projectable.len(), 1);
+        assert_eq!(projectable[0].source_id, "public-1");
+    }
+
+    #[tokio::test]
+    async fn test_recover_pending() {
+        let (store, _temp_dir) = create_test_store().await;
+
+        // Begin a batch but don't commit
+        let tx = store.begin_batch("test-source").await.expect("Failed to begin batch");
+        let event = create_test_event("test-source", "event-1");
+        store.append(&tx, event).await.expect("Failed to append");
+        // Don't commit - simulate crash
+
+        // Recover pending batches
+        let recovered = store.recover_pending().await.expect("Failed to recover");
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered[0], tx.batch_id);
+
+        // Count should be 0 (events were rolled back)
+        let count = store.count_total().await.expect("Failed to count");
+        assert_eq!(count, 0);
+    }
+}
