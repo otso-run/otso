@@ -21,6 +21,21 @@ function getDb(): Database.Database {
   return db;
 }
 
+/**
+ * Source-specific details (author, tags, reading progress, …) the indexer
+ * keeps beside each entry. Indexes built before the column existed have none.
+ */
+function getMetadata(database: Database.Database, id: number): Record<string, unknown> | null {
+  try {
+    const row = database.prepare('SELECT metadata FROM search_entry_map WHERE rowid = ?').get(id) as
+      | { metadata: string | null }
+      | undefined;
+    return row?.metadata ? JSON.parse(row.metadata) : null;
+  } catch {
+    return null;
+  }
+}
+
 export class FTS5Backend implements SearchBackend {
   readonly name = 'fts5';
 
@@ -233,11 +248,14 @@ export class FTS5Backend implements SearchBackend {
         FROM search_entries
         WHERE content_rowid = ?
       `).get(id) as DocumentResponse | undefined;
-      return doc || null;
+      if (!doc) return null;
+      const metadata = getMetadata(database, id);
+      return metadata ? { ...doc, metadata } : doc;
     } catch {
       return null;
     }
   }
+
 
   async isAvailable(): Promise<boolean> {
     try {

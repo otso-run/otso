@@ -100,6 +100,11 @@ Your SQL query should return these columns:
 | `occurred_at` | Yes | When the event happened. Also accepts `timestamp`, `created_at`, `date`, etc. |
 | `url` | No | Link to original item |
 | `visibility` | No | Item visibility level |
+| `metadata` | No | A JSON object (e.g. from `json_object(...)`) of details shown in the result detail, such as author or tags. Not searched; empty values are dropped |
+
+Each build compares a row with what it stored last time. A row whose columns
+changed (an edited item, or a query that now selects more) replaces its
+search entry, so you don't need `otso index --fresh` after changing a query.
 
 ### Timestamp Handling
 
@@ -145,7 +150,7 @@ The default configuration includes 23 sources:
 
 ### Reading
 - **pinboard** — Bookmarks from Pinboard
-- **readwise** — Highlights from Readwise
+- **readwise** — Highlights from Readwise, and Reader documents with their full article text
 
 ### Music
 - **spotify** — Listening history from Spotify

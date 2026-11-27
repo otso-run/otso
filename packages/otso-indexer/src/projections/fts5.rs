@@ -65,9 +65,10 @@ impl Fts5Projection {
         Ok(stats)
     }
 
-    /// Add only events that aren't in the index yet (matched on event_id).
-    /// Events are immutable once ingested, so new ids are the only change a
-    /// build can make; use `rebuild` after deletions or re-ingesting with new ids.
+    /// Bring the index in line with the event store, matched on event_id:
+    /// add events that aren't indexed yet and drop entries whose event is
+    /// gone. The event store gives a changed row a new event_id, so an edit
+    /// shows up here as one removal plus one addition.
     pub async fn update(&self, event_store: &SqliteEventStore) -> Result<ProjectionStats> {
         let start = Instant::now();
         let mut stats = ProjectionStats::default();
@@ -78,16 +79,28 @@ impl Fts5Projection {
                 .await?
                 .into_iter()
                 .collect();
+
+        let events = event_store.stream_projectable().await?;
+        let current: std::collections::HashSet<String> =
+            events.iter().map(|e| e.event_id.to_string()).collect();
+        let stale: Vec<&String> = indexed.iter().filter(|id| !current.contains(*id)).collect();
+        if !stale.is_empty() {
+            stats.entries_removed = self.remove_entries(&stale).await?;
+        }
+
         let max_id: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(rowid), 0) FROM search_entry_map")
             .fetch_one(&self.pool)
             .await?;
-
-        let events = event_store.stream_projectable().await?;
         let new: Vec<_> = events
             .iter()
             .filter(|e| !indexed.contains(&e.event_id.to_string()))
             .collect();
-        tracing::info!("FTS5: {} new of {} events", new.len(), events.len());
+        tracing::info!(
+            "FTS5: {} new and {} removed of {} events",
+            new.len(),
+            stale.len(),
+            events.len()
+        );
 
         stats.entries_added = self.insert_events(new.into_iter(), max_id).await?;
         let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM search_entry_map")
@@ -97,6 +110,34 @@ impl Fts5Projection {
 
         stats.duration_ms = start.elapsed().as_millis() as i64;
         Ok(stats)
+    }
+
+    /// Delete entries by event_id. event_id is an UNINDEXED FTS5 column, so
+    /// this collects the ids in a temp table and scans search_entries once.
+    async fn remove_entries(&self, event_ids: &[&String]) -> Result<i64> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("CREATE TEMP TABLE IF NOT EXISTS stale_events (event_id TEXT PRIMARY KEY)")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM stale_events").execute(&mut *tx).await?;
+        for id in event_ids {
+            sqlx::query("INSERT OR IGNORE INTO stale_events (event_id) VALUES (?1)")
+                .bind(id.as_str())
+                .execute(&mut *tx)
+                .await?;
+        }
+        sqlx::query("DELETE FROM search_entries WHERE event_id IN (SELECT event_id FROM stale_events)")
+            .execute(&mut *tx)
+            .await?;
+        let removed = sqlx::query(
+            "DELETE FROM search_entry_map WHERE event_id IN (SELECT event_id FROM stale_events)",
+        )
+        .execute(&mut *tx)
+        .await?
+        .rows_affected() as i64;
+        sqlx::query("DROP TABLE stale_events").execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(removed)
     }
 
     /// Insert events in transactions of 1,000 (one commit per batch instead of
@@ -161,8 +202,8 @@ impl Fts5Projection {
         sqlx::query(
             r#"
             INSERT INTO search_entry_map (
-                rowid, event_id, source, entry_type, ts, visibility, year, month
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                rowid, event_id, source, entry_type, ts, visibility, year, month, metadata
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
             "#,
         )
         .bind(entry.id)
@@ -173,6 +214,7 @@ impl Fts5Projection {
         .bind(&entry.visibility)
         .bind(entry.year)
         .bind(&entry.month)
+        .bind(&entry.metadata)
         .execute(&mut **tx)
         .await?;
 
@@ -242,12 +284,25 @@ async fn init_schema(pool: &SqlitePool) -> Result<()> {
             ts INTEGER NOT NULL,
             visibility TEXT NOT NULL,
             year INTEGER NOT NULL,
-            month TEXT NOT NULL
+            month TEXT NOT NULL,
+            metadata TEXT
         )
         "#,
     )
     .execute(pool)
     .await?;
+
+    // Indexes built before the metadata column existed.
+    let has_metadata: bool = sqlx::query_scalar(
+        "SELECT COUNT(*) > 0 FROM pragma_table_info('search_entry_map') WHERE name = 'metadata'",
+    )
+    .fetch_one(pool)
+    .await?;
+    if !has_metadata {
+        sqlx::query("ALTER TABLE search_entry_map ADD COLUMN metadata TEXT")
+            .execute(pool)
+            .await?;
+    }
 
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_entry_map_source ON search_entry_map(source)")
         .execute(pool)
@@ -286,4 +341,81 @@ async fn init_schema(pool: &SqlitePool) -> Result<()> {
     .await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::event_store::{Event, EventType, Visibility};
+    use tempfile::TempDir;
+    use uuid::Uuid;
+
+    fn article(content: &str) -> Event {
+        Event {
+            event_id: Uuid::new_v4(),
+            event_type: EventType::Ingest,
+            source: "readwise".into(),
+            source_id: "doc-1".into(),
+            action_type: Some("ReadAction".into()),
+            object_type: Some("Article".into()),
+            payload: serde_json::json!({
+                "title": "Slow software",
+                "content": content,
+                "metadata": {"author": "Ada Example", "tags": ["essays"], "notes": null, "summary": ""}
+            }),
+            visibility: Visibility::Public,
+            occurred_at: 1_705_315_800,
+            ingested_at: 0,
+            batch_id: None,
+            deleted_at: None,
+        }
+    }
+
+    async fn build(store: &SqliteEventStore, fts: &Fts5Projection, event: Event) -> ProjectionStats {
+        let tx = store.begin_batch("readwise").await.unwrap();
+        store.append(&tx, event).await.unwrap();
+        store.commit(tx).await.unwrap();
+        fts.update(store).await.unwrap()
+    }
+
+    async fn matches(fts: &Fts5Projection, q: &str) -> i64 {
+        sqlx::query_scalar("SELECT COUNT(*) FROM search_entries WHERE search_entries MATCH ?1")
+            .bind(q)
+            .fetch_one(&fts.pool)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn update_replaces_entries_whose_event_changed() {
+        let dir = TempDir::new().unwrap();
+        let data = dir.path().to_str().unwrap();
+        let store = SqliteEventStore::open(data).await.unwrap();
+        let fts = Fts5Projection::open(data).await.unwrap();
+
+        let s = build(&store, &fts, article("only a summary")).await;
+        assert_eq!((s.entries_added, s.entries_removed), (1, 0));
+        assert_eq!(matches(&fts, "caching").await, 0);
+
+        let s = build(&store, &fts, article("only a summary, then caching and patience")).await;
+        assert_eq!((s.entries_added, s.entries_removed), (1, 1));
+        assert_eq!(matches(&fts, "caching").await, 1);
+        let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM search_entry_map")
+            .fetch_one(&fts.pool)
+            .await
+            .unwrap();
+        assert_eq!(total, 1);
+
+        // Empty metadata values are dropped; the rest is kept as JSON.
+        let metadata: String = sqlx::query_scalar("SELECT metadata FROM search_entry_map")
+            .fetch_one(&fts.pool)
+            .await
+            .unwrap();
+        let metadata: serde_json::Value = serde_json::from_str(&metadata).unwrap();
+        assert_eq!(metadata, serde_json::json!({"author": "Ada Example", "tags": ["essays"]}));
+
+        // Nothing changed: nothing added or removed.
+        let s = build(&store, &fts, article("only a summary, then caching and patience")).await;
+        assert_eq!((s.entries_added, s.entries_removed), (0, 0));
+    }
 }

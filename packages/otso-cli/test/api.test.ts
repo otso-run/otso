@@ -4,6 +4,7 @@ import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadCredentials } from '../src/core/credentials.js';
 import { authenticate, runSync } from '../src/core/runner.js';
+import { readerPacing } from '../src/connectors/readwise.js';
 import { mockFetch, runTomlQueries, sandbox } from './helpers.js';
 
 const realFetch = globalThis.fetch;
@@ -103,6 +104,7 @@ describe('are.na', () => {
 
 describe('readwise', () => {
   test('pages through the export and only asks for updates afterwards', async () => {
+    readerPacing.minIntervalMs = 0;
     const { sources } = sandbox();
     const calls = mockFetch([
       { match: /\/auth\//, respond: () => ({ status: 204 }) },
@@ -116,13 +118,15 @@ describe('readwise', () => {
       },
       {
         match: /\/api\/v3\/list\//,
-        respond: () => ({
+        respond: (u) => ({
           body: {
-            results: [
-              { id: '01docA', title: 'An article', source_url: 'https://article', summary: 'about it', location: 'later', saved_at: '2024-02-01T00:00:00Z', tags: {} },
-              { id: '01feed', title: 'RSS item', location: 'feed', saved_at: '2024-02-01T00:00:00Z' },
-              { id: '01hl', parent_id: '01docA', title: 'a highlight', location: 'later', saved_at: '2024-02-01T00:00:00Z' },
-            ],
+            results:
+              u.searchParams.get('location') === 'later'
+                ? [
+                    { id: '01docA', title: 'An article', source_url: 'https://article', summary: 'about it', location: 'later', saved_at: '2024-02-01T00:00:00Z', tags: {} },
+                    { id: '01hl', parent_id: '01docA', title: 'a highlight', location: 'later', saved_at: '2024-02-01T00:00:00Z' },
+                  ]
+                : [],
             nextPageCursor: null,
           },
         }),
@@ -136,9 +140,89 @@ describe('readwise', () => {
       ['Book B', 'second'],
       ['An article', 'about it'],
     ]);
+    // One request per location, never the RSS feed, always with article HTML.
+    const reader = calls.filter((c) => c.includes('/api/v3/list/')).map((c) => new URL(c).searchParams);
+    expect(reader.map((p) => p.get('location'))).toEqual(['new', 'later', 'shortlist', 'archive']);
+    expect(reader.every((p) => p.get('withHtmlContent') === 'true')).toBe(true);
     calls.length = 0;
     await runSync('readwise');
     expect(calls[0]).toContain('updatedAfter=');
+    expect(calls.filter((c) => c.includes('/api/v3/list/')).every((c) => c.includes('updatedAfter='))).toBe(true);
+  });
+
+  test('stores article text and metadata, and backfills older databases once', async () => {
+    readerPacing.minIntervalMs = 0;
+    const { sources } = sandbox();
+    const doc = {
+      id: '01docB',
+      title: 'Slow software',
+      url: 'https://read.readwise.io/read/01docB',
+      source_url: 'https://example.com/slow',
+      author: 'Ada Example',
+      site_name: 'Example Blog',
+      category: 'article',
+      location: 'archive',
+      tags: { essays: { name: 'essays' } },
+      word_count: 1200,
+      reading_time: '5 mins',
+      published_date: '2024-03-01',
+      summary: 'Why tools should wait.',
+      image_url: 'https://example.com/cover.png',
+      notes: 'reread',
+      reading_progress: 0.5,
+      saved_at: '2024-03-02T00:00:00Z',
+      last_opened_at: '2024-03-03T00:00:00Z',
+      updated_at: '2024-03-03T00:00:00Z',
+      html_content:
+        '<div><h1>Slow software</h1><p>Caching &amp; patience&#8217;s <b>virtues</b>.</p><script>track()</script><p>Second&nbsp;paragraph.</p></div>',
+    };
+    const calls = mockFetch([
+      { match: /\/auth\//, respond: () => ({ status: 204 }) },
+      { match: /\/export\//, respond: () => ({ body: { results: [], nextPageCursor: null } }) },
+      {
+        match: /\/api\/v3\/list\//,
+        respond: (u) => ({
+          body: { results: u.searchParams.get('location') === 'archive' ? [doc] : [], nextPageCursor: null },
+        }),
+      },
+    ]);
+    await authenticate('readwise', { accessToken: 'tok' });
+
+    // A database from before article text: saved cursor, no schema version.
+    await runSync('readwise');
+    const dbPath = join(sources, 'readwise/chronicle/chronicle.db');
+    const pre = new Database(dbPath);
+    pre.query("DELETE FROM _otso_sync WHERE key = 'readerSchemaVersion'").run();
+    pre.query('DELETE FROM reader_content').run();
+    pre.close();
+
+    calls.length = 0;
+    const r = await runSync('readwise');
+    expect(calls.filter((c) => c.includes('/api/v3/list/')).some((c) => c.includes('updatedAfter='))).toBe(false);
+    expect(r.stats.reader_content).toEqual({ inserted: 1, updated: 0 });
+
+    const [article] = runTomlQueries('readwise', sources);
+    expect(article.title).toBe('Slow software');
+    expect(article.content).toBe(
+      "Ada Example\nWhy tools should wait.\nSlow software\nCaching & patience\u2019s virtues .\nSecond paragraph."
+    );
+    expect(JSON.parse(article.metadata)).toMatchObject({
+      author: 'Ada Example',
+      site_name: 'Example Blog',
+      published_date: '2024-03-01',
+      word_count: 1200,
+      tags: ['essays'],
+      location: 'archive',
+      reading_progress: 0.5,
+      reader_url: 'https://read.readwise.io/read/01docB',
+      notes: 'reread',
+    });
+
+    // Running again with nothing new changes nothing (and is incremental).
+    calls.length = 0;
+    const again = await runSync('readwise');
+    expect(calls.filter((c) => c.includes('/api/v3/list/')).every((c) => c.includes('updatedAfter='))).toBe(true);
+    expect(again.stats.reader_content).toEqual({ inserted: 0, updated: 1 });
   });
 });
 

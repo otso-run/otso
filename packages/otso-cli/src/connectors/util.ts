@@ -96,3 +96,38 @@ export function firstColumn(cols: Set<string>, candidates: string[]): string | n
   return candidates.find((c) => cols.has(c)) ?? null;
 }
 
+
+const NAMED_ENTITIES: Record<string, string> = {
+  nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
+  lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”',
+  ndash: '–', mdash: '—', hellip: '…', middot: '·',
+  copy: '©', reg: '®', trade: '™', deg: '°', times: '×',
+};
+
+function decodeEntities(s: string): string {
+  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e: string) => {
+    if (e[0] === '#') {
+      const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return Number.isFinite(n) && n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : m;
+    }
+    return NAMED_ENTITIES[e.toLowerCase()] ?? m;
+  });
+}
+
+/**
+ * Plain text from an HTML page or article: drop scripts, styles and tags,
+ * keep paragraph breaks, decode entities. Good enough for full-text search;
+ * not meant for display.
+ */
+export function htmlToText(html: string): string {
+  return decodeEntities(
+    html
+      .replace(/<(script|style|template|noscript|svg)\b[\s\S]*?<\/\1>/gi, ' ')
+      .replace(/<!--[\s\S]*?-->/g, ' ')
+      .replace(/<br\s*\/?>|<\/?(p|div|h[1-6]|li|tr|section|article|blockquote|pre|figure|figcaption|ul|ol|table|header|footer)\b[^>]*>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+  )
+    .replace(/[ \t ]+/g, ' ')
+    .replace(/ *\n[\s]*/g, '\n')
+    .trim();
+}

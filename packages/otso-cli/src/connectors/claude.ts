@@ -2,7 +2,7 @@ import { stat } from 'node:fs/promises';
 import { openArchive, type Archive } from '../core/archive.js';
 import type { TableDef } from '../core/chronicle.js';
 import type { Connector, RunContext, RunStats } from './types.js';
-import { addStats } from './util.js';
+import { addStats, htmlToText } from './util.js';
 
 /**
  * Claude data export (Settings > Privacy > Export data).
@@ -339,24 +339,6 @@ export function threadRows(messages: any[], channels: any[]) {
     });
   }
   return rows;
-}
-
-/** Plain text from an HTML page: drop scripts, styles and tags. */
-export function htmlToText(html: string): string {
-  return html
-    .replace(/<(script|style|template)[\s\S]*?<\/\1>/gi, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<br\s*\/?>|<\/(p|div|h[1-6]|li|tr|section)>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\s*\n\s*/g, '\n')
-    .trim();
 }
 
 function commentTexts(data: any): string[] {
