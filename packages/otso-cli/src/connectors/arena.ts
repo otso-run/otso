@@ -1,4 +1,4 @@
-import type { TableDef } from '../core/chronicle.js';
+import type { ChronicleStore, TableDef } from '../core/chronicle.js';
 import { getJson } from '../core/http.js';
 import type { Connector, RunStats } from './types.js';
 import { addStats } from './util.js';
@@ -6,9 +6,18 @@ import { addStats } from './util.js';
 /**
  * Are.na (v3 API): every channel you created, plus every block in them.
  *
- * Incremental: a channel's contents are only re-fetched when its updated_at
- * has changed since the last sync. Blocks are keyed on their Are.na id, so a
- * block connected to several channels is stored once.
+ * Incremental, in two passes:
+ *  1. A channel's contents are re-fetched only when its updated_at has changed
+ *     since the last sync. Connecting or removing a block bumps it, so this
+ *     catches new blocks cheaply.
+ *  2. Editing a block (title, description, text) does NOT bump its channel's
+ *     updated_at, so every sync also lists the blocks you authored
+ *     (/users/:id/contents, about ten pages) and stores any whose updated_at
+ *     moved. This also picks up your blocks that only live in other people's
+ *     channels. Edits by others to their blocks in your channels still need
+ *     `--full`.
+ * Blocks are keyed on their Are.na id, so a block connected to several
+ * channels is stored once.
  */
 
 const API = 'https://api.are.na/v3';
@@ -33,6 +42,7 @@ export const ARENA_BLOCKS: TableDef = {
     'image_url',
     'channel_slug',
     'connected_at',
+    'updated_at',
   ],
 };
 
@@ -108,6 +118,7 @@ export const arena: Connector = {
       )
     );
 
+    const blocks = blockWriter(store);
     let skipped = 0;
     for (const ch of channels) {
       const cursorKey = `channel:${ch.id}:updated_at`;
@@ -117,25 +128,80 @@ export const arena: Connector = {
       }
       const rows = [];
       for await (const b of paginate<any>(`${API}/channels/${ch.id}/contents`, token)) {
-        if (b.type === 'Channel' || b.base_type === 'Channel') continue;
-        rows.push({
-          id: `block-${b.id}`,
-          title: b.title || b.source?.title || b.attachment?.filename || '',
-          content: markdown(b.content),
-          description: markdown(b.description),
-          created_at: b.created_at,
-          source_url: b.source?.url ?? b.attachment?.url ?? null,
-          class: b.type,
-          image_url: b.image?.src ?? null,
-          channel_slug: ch.slug,
-          connected_at: b.connection?.connected_at ?? null,
-        });
+        if (isChannel(b)) continue;
+        rows.push(blockRow(b, ch.slug));
       }
-      addStats(stats, 'blocks', store.upsert(ARENA_BLOCKS, rows));
+      blocks.write(rows);
       store.setState(cursorKey, ch.updated_at ?? '');
       log(`  ${ch.title}: ${rows.length} blocks`);
     }
     if (skipped) log(`${skipped} channels unchanged since last sync`);
+
+    // Pass 2: block edits don't touch the channel, so check your own blocks.
+    const own = [];
+    for await (const b of paginate<any>(`${API}/users/${credentials.userId}/contents`, token)) {
+      if (!isChannel(b)) own.push(blockRow(b, null));
+    }
+    const edited = blocks.write(own, { onlyChanged: true });
+    log(`${own.length} of your blocks checked, ${edited} new or edited`);
+
+    addStats(stats, 'blocks', blocks.stats);
     return stats;
   },
 };
+
+const isChannel = (b: any) => b.type === 'Channel' || b.base_type === 'Channel';
+
+function blockRow(b: any, channelSlug: string | null) {
+  return {
+    id: `block-${b.id}`,
+    title: b.title || b.source?.title || b.attachment?.filename || '',
+    content: markdown(b.content),
+    description: markdown(b.description),
+    created_at: b.created_at,
+    source_url: b.source?.url ?? b.attachment?.url ?? null,
+    class: b.type,
+    image_url: b.image?.src ?? null,
+    channel_slug: channelSlug,
+    connected_at: b.connection?.connected_at ?? null,
+    updated_at: b.updated_at ?? null,
+  };
+}
+
+type BlockRow = ReturnType<typeof blockRow>;
+
+/**
+ * Upserts blocks, keeping the channel a block was first seen in when a row
+ * comes from a listing that has no channel (the user-contents pass), and
+ * optionally writing only rows that are new or whose updated_at moved.
+ */
+function blockWriter(store: ChronicleStore) {
+  store.ensureTable(ARENA_BLOCKS);
+  const prev = store.db.prepare(
+    'SELECT updated_at, channel_slug, connected_at FROM blocks WHERE id = ?'
+  );
+  const stats = { inserted: 0, updated: 0 };
+  const seen = new Set<string>();
+  return {
+    stats,
+    write(rows: BlockRow[], opts: { onlyChanged?: boolean } = {}): number {
+      const out: BlockRow[] = [];
+      for (const row of rows) {
+        const old = prev.get(row.id) as
+          | { updated_at: string | null; channel_slug: string | null; connected_at: string | null }
+          | null;
+        if (opts.onlyChanged && (seen.has(row.id) || (old && old.updated_at === row.updated_at))) continue;
+        if (old && !row.channel_slug) {
+          row.channel_slug = old.channel_slug;
+          row.connected_at ??= old.connected_at;
+        }
+        out.push(row);
+        seen.add(row.id);
+      }
+      const s = store.upsert(ARENA_BLOCKS, out);
+      stats.inserted += s.inserted;
+      stats.updated += s.updated;
+      return out.length;
+    },
+  };
+}
