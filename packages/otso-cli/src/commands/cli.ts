@@ -17,6 +17,8 @@ import { authenticate, formatStats, runIngest, runSync, sourceStatuses } from '.
 import { configuredSourcesDir } from '../core/sources-config.js';
 import { ask } from './prompt.js';
 import { isNetworkPath } from '../core/storage.js';
+import { NotOnThisMacError } from '../connectors/util.js';
+import { getDeviceName, ShareNotMountedError, slugDevice } from '../core/device.js';
 
 /**
  * The scriptable commands: everything the TUI does, without the TUI, so
@@ -84,26 +86,64 @@ export async function authCommand(id: string, opts: { logout?: boolean; open?: b
 }
 
 export async function syncCommand(ids: string[], opts: { full?: boolean; index?: boolean }) {
+  // With no names: every connected API, and every local app that's on this
+  // Mac and has been synced before (by this Mac or another one).
   const targets = ids.length
     ? ids
-    : (await sourceStatuses()).filter((s) => s.kind === 'api' ? s.connected : s.kind === 'local' && s.dbExists).map((s) => s.id);
+    : (await sourceStatuses())
+        .filter((s) => (s.kind === 'api' ? s.connected : s.kind === 'local' && s.onThisMac && (s.dbExists || s.syncedAnywhere)))
+        .map((s) => s.id);
   if (!targets.length) {
     console.log('Nothing to sync yet. Connect a service with `otso auth <source>`, or run `otso sync <local source>`.');
     return;
   }
   let failed = 0;
+  let synced = 0;
   for (const id of targets) {
     console.log(`\n${requireConnector(id).displayName}`);
     try {
       const r = await runSync(id, { full: opts.full, log });
+      synced++;
       console.log(`  ✓ ${formatStats(r.stats)}`);
+      const stored = describeStored(r, id);
+      if (stored) console.log(`    ${stored}`);
     } catch (err) {
+      if (err instanceof NotOnThisMacError) {
+        console.log(`  – skipped: ${err.message}`);
+        continue;
+      }
+      if (err instanceof ShareNotMountedError) {
+        console.error(`  ✗ ${err.message}`);
+        process.exitCode = 1;
+        return;
+      }
       failed++;
       console.error(`  ✗ ${err instanceof Error ? err.message : String(err)}`);
     }
   }
-  if (opts.index && failed < targets.length) await indexCommand({});
+  if (opts.index && synced) await indexCommand({});
   if (failed) process.exitCode = 1;
+}
+
+const fmtTime = (iso: string) => {
+  const d = new Date(iso);
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return sameDay
+    ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+};
+
+/** "7,633 events stored in total · previous sync 3:39 PM from caseys-macbook-pro" */
+export function describeStored(
+  r: { source: string; totals?: Record<string, number>; previous?: { at: string; device?: string } },
+  requested?: string
+): string {
+  const parts: string[] = [];
+  const totals = Object.entries(r.totals ?? {}).filter(([, n]) => n > 0);
+  if (totals.length) parts.push(`${totals.map(([t, n]) => `${n.toLocaleString()} ${t}`).join(', ')} stored in total`);
+  if (r.previous?.at) parts.push(`previous sync ${fmtTime(r.previous.at)}${r.previous.device ? ` from ${r.previous.device}` : ''}`);
+  if (requested && r.source !== requested) parts.push(`saved as ${r.source}`);
+  return parts.join(' · ');
 }
 
 export async function ingestCommand(id: string, files: string[], opts: { index?: boolean }) {
@@ -174,7 +214,7 @@ export function sourcesCommand() {
   console.log(`\nConfig: ${displayPath(getSourcesTomlPath())}`);
 }
 
-const SETTING_KEYS = { 'data-dir': 'dataDir', 'sources-dir': 'sourcesDir', indexer: 'indexerPath' } as const;
+const SETTING_KEYS = { 'data-dir': 'dataDir', 'sources-dir': 'sourcesDir', indexer: 'indexerPath', device: 'device' } as const;
 
 export async function configCommand(action?: string, key?: string, value?: string) {
   if (action === 'set' || action === 'unset') {
@@ -182,7 +222,7 @@ export async function configCommand(action?: string, key?: string, value?: strin
     if (!k) fail(`Unknown setting "${key}". Settings: ${Object.keys(SETTING_KEYS).join(', ')}`);
     if (action === 'set' && !value) fail(`Usage: otso config set ${key} <value>`);
     const settings = readSettings();
-    if (action === 'set') settings[k] = key === 'indexer' ? value : resolve(expandHome(value!));
+    if (action === 'set') settings[k] = key === 'indexer' ? value : key === 'device' ? slugDevice(value!) : resolve(expandHome(value!));
     else delete settings[k];
     await writeSettings(settings);
     console.log(action === 'set' ? `✓ ${key} = ${settings[k]}` : `✓ ${key} reset to default`);
@@ -194,12 +234,13 @@ export async function configCommand(action?: string, key?: string, value?: strin
   console.log(`sources.toml ${displayPath(getSourcesTomlPath())}`);
   console.log(`credentials  ${displayPath(getConfigDir())}`);
   console.log(`indexer      ${settings.indexerPath ?? process.env.OTSO_INDEXER ?? '(repo build, or cargo run)'}`);
+  console.log(`device       ${await getDeviceName()}${settings.device ? '' : '  (from hostname)'}`);
   if (isNetworkPath(getDataRoot())) {
     console.log('\n⚠ data-dir is on a network share. Keep it local and set sources-dir to the share instead; the index needs a local disk.');
   } else if (isNetworkPath(getSourcesDir())) {
     console.log('\nsources-dir is on a network share: source databases there use a rollback journal instead of WAL.');
   }
-  console.log(`\nChange with: otso config set data-dir|sources-dir|indexer <path>`);
+  console.log(`\nChange with: otso config set data-dir|sources-dir|indexer <path>, or otso config set device <name>`);
 }
 
 export async function migrateCommand(from: string, opts: { dir?: string; verify?: boolean; overwrite?: boolean }) {

@@ -41,6 +41,13 @@ export function resolveLocalPath(pattern: string): string | null {
   return null;
 }
 
+/** A local source whose app database isn't on this Mac; `otso sync` skips it. */
+export class NotOnThisMacError extends Error {
+  constructor(displayName: string) {
+    super(`${displayName} isn't on this Mac`);
+  }
+}
+
 export class PermissionError extends Error {
   constructor(path: string) {
     super(

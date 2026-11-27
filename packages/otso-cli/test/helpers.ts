@@ -16,6 +16,8 @@ export function sandbox() {
   process.env.OTSO_CONFIG_DIR = join(root, 'config');
   // Never let a test append to the repo's tracked sources.toml.
   process.env.OTSO_SOURCES_TOML = join(data, 'config', 'sources.toml');
+  // Per-device sources are named after this; never the real hostname in tests.
+  process.env.OTSO_DEVICE = 'test-mac';
   return { root, data, sources: join(data, 'sources') };
 }
 
@@ -32,11 +34,11 @@ export function writeFiles(dir: string, files: Record<string, string | Uint8Arra
  * Run the sources.toml queries for `sourceName` against the db the CLI wrote,
  * exactly as otso-indexer would, and return the rows.
  */
-export function runTomlQueries(sourceName: string, sourcesDir: string, tomlPath = REPO_TOML) {
+export function runTomlQueries(sourceName: string, sourcesDir: string, tomlPath = REPO_TOML, dbPath?: string) {
   const cfg = parse(readFileSync(tomlPath, 'utf8')) as any;
   const src = cfg.sources.find((s: any) => s.name === sourceName);
   if (!src) throw new Error(`no ${sourceName} in sources.toml`);
-  const db = new Database(join(sourcesDir, src.db_path), { readonly: true });
+  const db = new Database(join(sourcesDir, dbPath ?? src.db_path), { readonly: true });
   try {
     return src.queries.flatMap((q: any) => db.query(q.sql).all() as any[]);
   } finally {

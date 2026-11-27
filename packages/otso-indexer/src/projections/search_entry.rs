@@ -212,11 +212,23 @@ pub fn derive_entry_type(event: &Event) -> String {
     }
 }
 
-/// Derive category from source and action type
-pub fn derive_category(source: &str, _action_type: &Option<String>) -> String {
+/// Derive category from source and action type. Per-device and per-account
+/// sources (`safari-<device>`, `twitter-<handle>`) fall back to their base name.
+pub fn derive_category(source: &str, action_type: &Option<String>) -> String {
+    let category = category_for(source);
+    if category != "other" {
+        return category;
+    }
+    match source.rsplit_once('-') {
+        Some((base, _)) if !base.is_empty() => derive_category(base, action_type),
+        _ => category,
+    }
+}
+
+fn category_for(source: &str) -> String {
     match source {
         "spotify" | "lastfm" | "apple-podcasts" | "apple-music" => "music".to_string(),
-        "safari" | "chrome" | "atlas" => "browse".to_string(),
+        "safari" | "chrome" | "atlas" | "helium" => "browse".to_string(),
         "twitter" | "mastodon" | "bluesky" | "linkedin" => "social".to_string(),
         "imessage" | "email" | "google-chat" | "slack" => "comms".to_string(),
         "pinboard" | "readwise" | "arena" => "reading".to_string(),
@@ -232,5 +244,18 @@ pub fn derive_category(source: &str, _action_type: &Option<String>) -> String {
         "shell" => "shell".to_string(),
         "google-search" => "search".to_string(),
         _ => "other".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod category_tests {
+    use super::derive_category;
+
+    #[test]
+    fn per_device_sources_use_their_base_category() {
+        assert_eq!(derive_category("safari-caseys-mac-mini", &None), "browse");
+        assert_eq!(derive_category("helium-laptop", &None), "browse");
+        assert_eq!(derive_category("apple-notes", &None), "notes");
+        assert_eq!(derive_category("unknown-thing", &None), "other");
     }
 }

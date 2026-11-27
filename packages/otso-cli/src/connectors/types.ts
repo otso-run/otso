@@ -69,6 +69,13 @@ export interface Connector {
   exportGuide?: ExportGuide;
   /** Candidate paths for local sources; first readable one wins. Globs allowed in one segment. */
   localPaths?: string[];
+  /**
+   * Local data that differs per Mac and doesn't sync through iCloud (browser
+   * history). Each Mac writes its own <id>-<device> source next to the
+   * others, so syncing two Macs into one sources-dir never mixes them.
+   * dbPath is then only the legacy shared location, from before the split.
+   */
+  perDevice?: boolean;
   /** macOS privacy permission the terminal needs for local sources. */
   permission?: 'full-disk-access';
 

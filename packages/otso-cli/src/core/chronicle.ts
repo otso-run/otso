@@ -148,6 +148,18 @@ export class ChronicleStore {
     return stats;
   }
 
+  /** Delete rows by key; returns how many existed. */
+  deleteKeys(def: TableDef, keys: Iterable<string>): number {
+    this.ensureTable(def);
+    const del = this.db.prepare(`DELETE FROM ${q(def.name)} WHERE ${q(def.key)} = ?`);
+    let n = 0;
+    const run = this.db.transaction((batch: string[]) => {
+      for (const k of batch) n += del.run(k).changes;
+    });
+    run([...keys]);
+    return n;
+  }
+
   count(table: string): number {
     try {
       const r = this.db.query(`SELECT COUNT(*) AS n FROM ${q(table)}`).get() as { n: number };
