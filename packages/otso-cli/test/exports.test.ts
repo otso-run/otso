@@ -77,17 +77,16 @@ describe('export connectors produce rows the sources.toml queries can read', () 
 
   test('claude split export: one zip per category, in any order', async () => {
     const { sources } = sandbox();
-    const zipOf = (name: string, files: Record<string, string>) => {
-      const zip = join(tmp(), name);
-      execFileSync('zip', ['-qr', zip, '.'], { cwd: writeFiles(tmp(), files) });
-      return zip;
-    };
     const folder = tmp();
-    const parts = {
+    const cloud = (rows: unknown[]) => JSON.stringify({ claude_code_cloud: rows });
+    const parts: Record<string, Record<string, string>> = {
       'memories-000.zip': {
-        'memories.json': JSON.stringify([
-          { conversations_memory: 'Likes long walks.', project_memories: { p1: 'Garden is zone 6b.' }, account_uuid: 'a1' },
-        ]),
+        'memories/a1.json': JSON.stringify({
+          conversations_memory: 'Likes long walks.',
+          project_memories: { p1: 'Garden is zone 6b.' },
+          memory_files: [{ path: 'habits.md', content: 'Waters plants on Sundays', updated_at: '2024-06-01T00:00:00Z' }],
+          account_uuid: 'a1',
+        }),
       },
       'projects-000.zip': {
         'projects/p1.json': JSON.stringify({
@@ -119,18 +118,72 @@ describe('export connectors produce rows the sources.toml queries can read', () 
           { uuid: 'c9', name: 'Hello', summary: 'A greeting', created_at: '2024-05-01T00:00:00Z', chat_messages: [] },
         ]),
       },
-      'feedback-000.zip': { 'feedback.json': '[]' },
+      'frames-000.zip': {
+        'artifacts/f1/artifact.json': JSON.stringify({
+          id: 'f1', kind: 'page', visibility: 'private', active_version: 'v1', updated_at: '2024-07-02T00:00:00Z',
+          versions: [{ id: 'v1', title: 'Trip notes', created_at: '2024-07-01T00:00:00Z' }],
+        }),
+        'artifacts/f1/page.md': '# Trip notes\n\nPack the tent.',
+        'artifacts/f1/comments.json': JSON.stringify([{ resolved: false, tab: 't', quoted_text: 'tent', comments: [{ text: 'Which tent?' }] }]),
+        'artifacts/f2/artifact.json': JSON.stringify({
+          id: 'f2', kind: 'artifact', visibility: 'private', active_version: 'v2', updated_at: '2024-08-02T00:00:00Z',
+          versions: [
+            { id: 'v1', title: 'Deck draft', created_at: '2024-08-01T00:00:00Z' },
+            { id: 'v2', title: 'Deck', created_at: '2024-08-02T00:00:00Z' },
+          ],
+        }),
+        'artifacts/f2/versions/v2/project/slides/cover.html': '<section><h1>Hello &amp; welcome</h1><script>x()</script></section>',
+        'artifacts/f2/versions/v2/SKILL.md': 'template instructions',
+        'artifacts/f2/versions/v2/artifact-type/reference/format.md': 'template reference',
+      },
+      'feedback-000.zip': {
+        'reflections/a1.json': JSON.stringify({
+          account_uuid: 'a1',
+          reflections: [
+            {
+              period: '2024-09',
+              content: { hero_title: 'A month of gardening', hero_body: 'You planned beds.', topics: [{ title: 'Garden', description: 'Lots', percent: 50 }] },
+              created_at: '2024-10-01T00:00:00Z',
+              updated_at: '2024-10-01T00:00:00Z',
+            },
+          ],
+          feedback: [],
+        }),
+      },
+      'claude_code_cloud-000.zip': {
+        'claude_code_cloud/routines.json': cloud([
+          { routine_id: 'r1', name: 'Daily digest', prompt: 'Summarise my day', prompt_withheld: false, enabled: true, schedule: { cron: '0 8 * * *' }, created_at: '2024-11-01T00:00:00Z', updated_at: '2024-11-01T00:00:00Z' },
+        ]),
+        'claude_code_cloud/channels/channels.json': cloud([{ channel_id: 'chan_1', content: { name: 'Otso' } }]),
+        'claude_code_cloud/channels/messages.json': cloud([
+          { message_id: 'm1', channel_id: 'chan_1', thread_root_message_id: 'm1', author_account_uuid: 'a1', text: 'Fix the search bug', created_at: '2024-11-02T00:00:00Z' },
+          { message_id: 'm2', channel_id: 'chan_1', thread_root_message_id: 'm1', author_agent_id: 'ag', text: 'Done, PR is up', created_at: '2024-11-02T01:00:00Z' },
+          { message_id: 'm3', channel_id: 'chan_1', thread_root_message_id: 'm1', notice: { text: 'status' }, text: null, created_at: '2024-11-02T02:00:00Z' },
+        ]),
+        'claude_code_cloud/channel_memory_files.json': cloud([
+          { account_uuid: 'a1', channel: 'Otso', memory: 'channel', path: 'setup.md', content: 'Runs on the Mac mini', created_at: '2024-11-03T00:00:00Z', updated_at: '2024-11-03T00:00:00Z' },
+        ]),
+      },
+      'light_metadata-000.zip': { 'users.json': '[]', 'login_history.json': '{"login_events":[]}' },
     };
     for (const [name, files] of Object.entries(parts)) {
-      execFileSync('cp', [zipOf(name, files), join(folder, name)]);
+      execFileSync('zip', ['-qr', join(folder, name), '.'], { cwd: writeFiles(tmp(), files) });
     }
+    writeFiles(folder, {
+      'manifest.json': JSON.stringify({ created_at: '2024-12-01T00:00:00+00:00', data_files: [] }),
+    });
 
     const { first } = await ingestTwice('claude', folder);
     expect(first.stats.projects.inserted).toBe(1);
     expect(first.stats.project_docs.inserted).toBe(1);
     expect(first.stats.memories.inserted).toBe(2);
+    expect(first.stats.memory_files.inserted).toBe(2);
     expect(first.stats.design_chats.inserted).toBe(1);
     expect(first.stats.conversations.inserted).toBe(1);
+    expect(first.stats.artifacts.inserted).toBe(2);
+    expect(first.stats.reflections.inserted).toBe(1);
+    expect(first.stats.routines.inserted).toBe(1);
+    expect(first.stats.threads.inserted).toBe(1);
 
     const rows = runTomlQueries('claude', sources);
     expectIndexable(rows);
@@ -138,10 +191,22 @@ describe('export connectors produce rows the sources.toml queries can read', () 
     expect(byId['c9'].title).toBe('Hello');
     expect(byId['project:p1']).toMatchObject({ title: 'Garden', content: 'Planting notes' });
     expect(byId['project-doc:d1']).toMatchObject({ title: 'beds.md (Garden)', content: 'Tomatoes by the fence' });
-    // The memories zip sorts before projects, yet the project name resolves.
     expect(byId['memory:a1:project:p1'].title).toBe('Claude memory: Garden');
-    expect(byId['memory:a1:conversations'].content).toBe('Likes long walks.');
+    expect(byId['memory:a1:conversations']).toMatchObject({ content: 'Likes long walks.', occurred_at: '2024-12-01T00:00:00+00:00' });
+    expect(byId['memory-file:a1:memory:habits.md']).toMatchObject({ title: 'Claude memory: habits.md', occurred_at: '2024-06-01T00:00:00Z' });
+    expect(byId['memory-file:a1:channel:Otso:channel:setup.md'].title).toBe('Claude memory: Otso/setup.md');
     expect(byId['design:x1']).toMatchObject({ title: 'Logo', content: 'Draw a bear' });
+    expect(byId['artifact:f1']).toMatchObject({ title: 'Trip notes', url: 'https://claude.ai/artifact/f1' });
+    expect(byId['artifact:f1'].content).toContain('Pack the tent.');
+    expect(byId['artifact:f1'].content).toContain('Which tent?');
+    expect(byId['artifact:f2']).toMatchObject({ title: 'Deck', content: 'Hello & welcome', occurred_at: '2024-08-01T00:00:00Z' });
+    expect(byId['reflection:a1:2024-09']).toMatchObject({ title: 'A month of gardening' });
+    expect(byId['routine:r1']).toMatchObject({ title: 'Routine: Daily digest', content: 'Summarise my day' });
+    expect(byId['thread:m1']).toMatchObject({
+      title: 'Fix the search bug (Otso)',
+      content: 'Me: Fix the search bug\n\nClaude: Done, PR is up',
+      url: 'https://claude.ai/code/project/chan_1?thread=m1',
+    });
   });
 
   test('pinboard JSON export', async () => {

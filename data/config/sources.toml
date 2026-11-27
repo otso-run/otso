@@ -491,6 +491,83 @@ SELECT
 FROM design_chats
 """
 
+[[sources.queries]]
+table = "memory_files"
+entry_type = "memory"
+action_type = "UpdateAction"
+object_type = "Note"
+sql = """
+SELECT
+    'memory-file:' || id as external_id,
+    'Claude memory: ' || CASE WHEN project_name IS NOT NULL THEN project_name || '/' ELSE '' END || path as title,
+    COALESCE(content, '') as content,
+    COALESCE(updated_at, created_at) as occurred_at,
+    NULL as url
+FROM memory_files
+"""
+
+# Published artifacts and docs
+[[sources.queries]]
+table = "artifacts"
+entry_type = "artifact"
+action_type = "CreateAction"
+object_type = "CreativeWork"
+sql = """
+SELECT
+    'artifact:' || id as external_id,
+    COALESCE(title, 'Untitled artifact') as title,
+    COALESCE(content, '') as content,
+    created_at as occurred_at,
+    'https://claude.ai/artifact/' || id as url
+FROM artifacts
+"""
+
+[[sources.queries]]
+table = "reflections"
+entry_type = "reflection"
+action_type = "ReviewAction"
+object_type = "Report"
+sql = """
+SELECT
+    'reflection:' || id as external_id,
+    COALESCE(title, 'Reflection') as title,
+    COALESCE(content, '') as content,
+    created_at as occurred_at,
+    NULL as url
+FROM reflections
+"""
+
+[[sources.queries]]
+table = "routines"
+entry_type = "routine"
+action_type = "PlanAction"
+object_type = "Schedule"
+sql = """
+SELECT
+    'routine:' || routine_id as external_id,
+    'Routine: ' || COALESCE(name, 'Untitled') as title,
+    COALESCE(prompt, '') as content,
+    created_at as occurred_at,
+    NULL as url
+FROM routines
+"""
+
+# Claude Code project threads (one entry per thread)
+[[sources.queries]]
+table = "threads"
+entry_type = "conversation"
+action_type = "CommunicateAction"
+object_type = "Conversation"
+sql = """
+SELECT
+    'thread:' || thread_id as external_id,
+    COALESCE(title, 'Untitled thread') || CASE WHEN channel_name IS NOT NULL THEN ' (' || channel_name || ')' ELSE '' END as title,
+    COALESCE(transcript, summary, '') as content,
+    created_at as occurred_at,
+    'https://claude.ai/code/project/' || channel_id || '?thread=' || thread_id as url
+FROM threads
+"""
+
 # ============================================================================
 # CURATION
 # ============================================================================

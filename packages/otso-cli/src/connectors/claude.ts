@@ -46,7 +46,56 @@ export const CLAUDE_DESIGN_CHATS: TableDef = {
   columns: ['uuid', 'title', 'project_uuid', 'project_name', 'summary', 'created_at', 'updated_at', 'message_count', 'transcript'],
 };
 
-const TABLES = [CLAUDE_CONVERSATIONS, CLAUDE_PROJECTS, CLAUDE_PROJECT_DOCS, CLAUDE_MEMORIES, CLAUDE_DESIGN_CHATS];
+/** Files in Claude's memory folder, chat-wide or per Claude Code project. */
+export const CLAUDE_MEMORY_FILES: TableDef = {
+  name: 'memory_files',
+  key: 'id',
+  columns: ['id', 'scope', 'project_name', 'path', 'content', 'created_at', 'updated_at'],
+};
+
+/** Published artifacts and docs ("frames" in the export). */
+export const CLAUDE_ARTIFACTS: TableDef = {
+  name: 'artifacts',
+  key: 'id',
+  columns: ['id', 'kind', 'title', 'visibility', 'version_count', 'content', 'created_at', 'updated_at'],
+};
+
+/** Periodic reflections Claude wrote about how you used it. */
+export const CLAUDE_REFLECTIONS: TableDef = {
+  name: 'reflections',
+  key: 'id',
+  columns: ['id', 'period', 'title', 'content', 'created_at', 'updated_at'],
+};
+
+/** Scheduled Claude Code routines. */
+export const CLAUDE_ROUTINES: TableDef = {
+  name: 'routines',
+  key: 'routine_id',
+  columns: ['routine_id', 'name', 'prompt', 'schedule', 'enabled', 'created_at', 'updated_at', 'ended_at'],
+};
+
+/** Claude Code project threads: one row per thread, messages joined. */
+export const CLAUDE_THREADS: TableDef = {
+  name: 'threads',
+  key: 'thread_id',
+  columns: ['thread_id', 'channel_id', 'channel_name', 'title', 'summary', 'message_count', 'transcript', 'created_at', 'updated_at'],
+};
+
+const TABLES = [
+  CLAUDE_CONVERSATIONS,
+  CLAUDE_PROJECTS,
+  CLAUDE_PROJECT_DOCS,
+  CLAUDE_MEMORIES,
+  CLAUDE_MEMORY_FILES,
+  CLAUDE_DESIGN_CHATS,
+  CLAUDE_ARTIFACTS,
+  CLAUDE_REFLECTIONS,
+  CLAUDE_ROUTINES,
+  CLAUDE_THREADS,
+];
+
+/** Long text is cut here so one huge item doesn't swamp search. */
+const MAX_CONTENT = 20000;
 
 // ---------------------------------------------------------------------------
 // Text helpers
@@ -173,6 +222,211 @@ export function memoryRows(entries: any[], exportedAt: string, projectNames: Map
   return rows;
 }
 
+/** The dated files inside memories/<account>.json (newer exports). */
+export function memoryFileRows(entries: any[]) {
+  const rows = [];
+  for (const e of Array.isArray(entries) ? entries : [entries]) {
+    const account = e?.account_uuid ?? 'me';
+    for (const f of e?.memory_files ?? []) {
+      if (!f?.path || typeof f.content !== 'string') continue;
+      rows.push({
+        id: `${account}:memory:${f.path}`,
+        scope: 'conversations',
+        project_name: null,
+        path: f.path,
+        content: f.content,
+        created_at: f.created_at ?? f.updated_at,
+        updated_at: f.updated_at,
+      });
+    }
+  }
+  return rows;
+}
+
+/** claude_code_cloud/channel_memory_files.json: memory kept per project. */
+export function channelMemoryFileRows(files: any[]) {
+  return files
+    .filter((f) => f?.path && typeof f.content === 'string')
+    .map((f) => ({
+      id: `${f.account_uuid ?? 'me'}:channel:${f.channel}:${f.memory ?? ''}:${f.path}`,
+      scope: 'project',
+      project_name: f.channel ?? null,
+      path: f.path,
+      content: f.content,
+      created_at: f.created_at ?? f.updated_at,
+      updated_at: f.updated_at,
+    }));
+}
+
+/** feedback zip: reflections/<account>.json */
+export function reflectionRows(entries: any[]) {
+  const rows = [];
+  for (const e of entries) {
+    for (const r of e?.reflections ?? []) {
+      const c = r.content ?? {};
+      const parts: string[] = [];
+      if (c.hero_body) parts.push(c.hero_body);
+      for (const [key, items] of Object.entries(c)) {
+        if (!Array.isArray(items) || key === 'stats') continue;
+        for (const it of items as any[]) {
+          const line = [it?.title, it?.body ?? it?.description].filter(Boolean).join(': ');
+          if (line) parts.push(line);
+        }
+      }
+      rows.push({
+        id: `${e.account_uuid ?? 'me'}:${r.period}`,
+        period: r.period,
+        title: c.hero_title || `Reflection ${r.period}`,
+        content: parts.join('\n\n').slice(0, MAX_CONTENT),
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+      });
+    }
+  }
+  return rows;
+}
+
+export function routineRows(routines: any[]) {
+  return routines
+    .filter((r) => r?.routine_id)
+    .map((r) => ({
+      routine_id: r.routine_id,
+      name: r.name || null,
+      prompt: r.prompt_withheld ? '' : r.prompt || '',
+      schedule: r.schedule ?? null,
+      enabled: r.enabled,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      ended_at: r.ended_at ?? null,
+    }));
+}
+
+/**
+ * claude_code_cloud/channels/messages.json grouped into threads. Notices
+ * (status cards) are left out; only messages with text count.
+ */
+export function threadRows(messages: any[], channels: any[]) {
+  const channelNames = new Map<string, string>();
+  for (const c of channels) if (c?.channel_id) channelNames.set(c.channel_id, c.content?.name ?? null);
+
+  const byThread = new Map<string, any[]>();
+  for (const m of messages) {
+    if (typeof m?.text !== 'string' || !m.text.trim()) continue;
+    const root = m.thread_root_message_id ?? m.message_id;
+    if (!byThread.has(root)) byThread.set(root, []);
+    byThread.get(root)!.push(m);
+  }
+
+  const rows = [];
+  for (const [threadId, list] of byThread) {
+    list.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+    const first = list.find((m) => m.message_id === threadId) ?? list[0];
+    const opener = list.find((m) => m.author_account_uuid) ?? first;
+    const title = String(first.text).trim().split('\n')[0].replace(/^#+\s*/, '').slice(0, 120);
+    rows.push({
+      thread_id: threadId,
+      channel_id: first.channel_id,
+      channel_name: channelNames.get(first.channel_id) ?? null,
+      title,
+      summary: String(opener.text).slice(0, 2000),
+      message_count: list.length,
+      transcript: list
+        .map((m) => `${m.author_account_uuid ? 'Me' : 'Claude'}: ${m.text}`)
+        .join('\n\n')
+        .slice(0, MAX_CONTENT),
+      created_at: first.created_at,
+      updated_at: list[list.length - 1].created_at,
+    });
+  }
+  return rows;
+}
+
+/** Plain text from an HTML page: drop scripts, styles and tags. */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<(script|style|template)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<br\s*\/?>|<\/(p|div|h[1-6]|li|tr|section)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .trim();
+}
+
+function commentTexts(data: any): string[] {
+  const threads = Array.isArray(data) ? data : data?.threads ?? [];
+  const out: string[] = [];
+  for (const t of threads) {
+    if (t?.quoted_text) out.push(`> ${t.quoted_text}`);
+    for (const c of t?.comments ?? []) if (typeof c?.text === 'string' && c.text.trim()) out.push(c.text);
+  }
+  return out;
+}
+
+/**
+ * One row per artifact. The text is the doc's page.md, or else the active
+ * version's own pages (slides, index.html, markdown), skipping the files
+ * every artifact type ships with (artifact-type/, SKILL.md).
+ */
+async function artifactRows(archive: Archive) {
+  const rows = [];
+  for (const meta of archive.find(/(^|\/)artifacts\/[^/]+\/artifact\.json$/)) {
+    const a = await archive.readJson(meta);
+    const dir = meta.slice(0, -'artifact.json'.length);
+    const versions: any[] = (a.versions ?? []).slice().sort((x: any, y: any) => String(x.created_at).localeCompare(String(y.created_at)));
+    const active = versions.find((v) => v.id === a.active_version) ?? versions[versions.length - 1];
+
+    let text = '';
+    const page = `${dir}page.md`;
+    if (archive.files.includes(page)) {
+      text = await archive.readText(page);
+    } else {
+      // The active version's folder, or the newest one the export kept.
+      const kept = versions.map((v) => v.id).reverse().filter((id) => archive.files.some((f) => f.startsWith(`${dir}versions/${id}/`)));
+      const vid = kept.includes(a.active_version) ? a.active_version : kept[0];
+      if (vid) {
+        const base = `${dir}versions/${vid}/`;
+        const own = archive.files
+          .filter((f) => f.startsWith(base))
+          .map((f) => f.slice(base.length))
+          .filter((f) => !f.startsWith('artifact-type/') && f !== 'SKILL.md' && /\.(html?|md|txt)$/i.test(f))
+          .sort();
+        const parts: string[] = [];
+        for (const f of own) {
+          const raw = await archive.readText(base + f);
+          parts.push(/\.html?$/i.test(f) ? htmlToText(raw) : raw);
+          if (parts.join('\n').length > MAX_CONTENT) break;
+        }
+        text = parts.filter(Boolean).join('\n\n');
+      }
+    }
+
+    const comments: string[] = [];
+    for (const name of ['comments.json', 'artifact_comments.json']) {
+      if (archive.files.includes(dir + name)) comments.push(...commentTexts(await archive.readJson(dir + name)));
+    }
+    if (comments.length) text += `\n\nComments:\n${comments.join('\n')}`;
+
+    rows.push({
+      id: a.id,
+      kind: a.kind ?? null,
+      title: active?.title || null,
+      visibility: a.visibility ?? null,
+      version_count: versions.length,
+      content: text.trim().slice(0, MAX_CONTENT),
+      created_at: versions[0]?.created_at ?? a.updated_at,
+      updated_at: a.updated_at,
+    });
+  }
+  return rows;
+}
+
 export function designChatRows(chats: any[]) {
   return chats
     .filter((c) => c?.uuid)
@@ -207,61 +461,109 @@ async function readMany(archive: Archive, single: RegExp, perItem: RegExp): Prom
   return out;
 }
 
-/** The newest file time in the archive: a stable stand-in for "exported at". */
-async function exportDate(archive: Archive): Promise<string> {
-  let newest = 0;
-  for (const f of archive.files) newest = Math.max(newest, (await stat(archive.abs(f))).mtimeMs);
-  return new Date(newest || Date.now()).toISOString();
+/**
+ * When the export was made. Memory has no dates of its own, so it takes this.
+ * Order: a manifest.json beside the zips, the newest dated memory file, the
+ * archive's file times (newer zips stamp everything 1980, so those are
+ * ignored), and finally now.
+ */
+async function exportDate(archive: Archive, hint: string | null, entries: any[]): Promise<string> {
+  if (hint) return hint;
+  let newest = '';
+  for (const e of entries) for (const f of e?.memory_files ?? []) if (f?.updated_at > newest) newest = f.updated_at;
+  if (newest) return newest;
+  let mtime = 0;
+  for (const f of archive.files) mtime = Math.max(mtime, (await stat(archive.abs(f))).mtimeMs);
+  return new Date(mtime > Date.UTC(2000, 0, 1) ? mtime : Date.now()).toISOString();
 }
 
-async function ingestOne(ctx: RunContext, archive: Archive, stats: RunStats, projectNames: Map<string, string>) {
+/** Newer exports wrap each list as { "claude_code_cloud": [...] }. */
+async function cloudList(archive: Archive, name: RegExp): Promise<any[]> {
+  const out: any[] = [];
+  for (const f of archive.find(name)) {
+    const data = await archive.readJson(f);
+    out.push(...(Array.isArray(data) ? data : data?.claude_code_cloud ?? []));
+  }
+  return out;
+}
+
+interface IngestState {
+  projectNames: Map<string, string>;
+  exportedAt: string | null;
+}
+
+async function ingestOne(ctx: RunContext, archive: Archive, stats: RunStats, state: IngestState) {
   const { store, log } = ctx;
   let matched = false;
+  const upsert = (def: TableDef, rows: any[], label: string) => {
+    matched = true;
+    addStats(stats, def.name, store.upsert(def, rows));
+    log(`${rows.length} ${label}`);
+  };
 
-  // Projects first, so memories and design chats can name their project.
+  // Projects first, so memories can name their project.
   const projects = await readMany(archive, /(^|\/)projects\.json$/, /(^|\/)projects\/[^/]+\.json$/);
   if (projects.length) {
-    matched = true;
     const { projects: p, docs } = projectRows(projects);
-    for (const row of p) if (row.name) projectNames.set(row.uuid, row.name);
-    addStats(stats, 'projects', store.upsert(CLAUDE_PROJECTS, p));
-    addStats(stats, 'project_docs', store.upsert(CLAUDE_PROJECT_DOCS, docs));
-    log(`${p.length} projects, ${docs.length} project docs`);
+    for (const row of p) if (row.name) state.projectNames.set(row.uuid, row.name);
+    upsert(CLAUDE_PROJECTS, p, 'projects');
+    upsert(CLAUDE_PROJECT_DOCS, docs, 'project docs');
   }
 
   const conversations = await readMany(archive, /(^|\/)conversations\.json$/, /(^|\/)conversations\/[^/]+\.json$/);
-  if (conversations.length) {
-    matched = true;
-    const rows = claudeRows(conversations);
-    addStats(stats, 'conversations', store.upsert(CLAUDE_CONVERSATIONS, rows));
-    log(`${rows.length} conversations`);
-  }
+  if (conversations.length) upsert(CLAUDE_CONVERSATIONS, claudeRows(conversations), 'conversations');
 
-  const memoryFiles = archive.find(/(^|\/)memories\.json$/);
-  if (memoryFiles.length) {
-    matched = true;
-    const exportedAt = await exportDate(archive);
-    const rows = [];
-    for (const f of memoryFiles) rows.push(...memoryRows(await archive.readJson(f), exportedAt, projectNames));
-    addStats(stats, 'memories', store.upsert(CLAUDE_MEMORIES, rows));
-    log(`${rows.length} memories`);
+  // memories.json (older) or memories/<account>.json (newer).
+  const memories = await readMany(archive, /(^|\/)memories\.json$/, /(^|\/)memories\/[^/]+\.json$/);
+  if (memories.length) {
+    const exportedAt = await exportDate(archive, state.exportedAt, memories);
+    upsert(CLAUDE_MEMORIES, memoryRows(memories, exportedAt, state.projectNames), 'memories');
+    const files = memoryFileRows(memories);
+    if (files.length) upsert(CLAUDE_MEMORY_FILES, files, 'memory files');
   }
 
   const designChats = await readMany(archive, /(^|\/)design_chats\.json$/, /(^|\/)design_chats\/[^/]+\.json$/);
-  if (designChats.length) {
-    matched = true;
-    const rows = designChatRows(designChats);
-    addStats(stats, 'design_chats', store.upsert(CLAUDE_DESIGN_CHATS, rows));
-    log(`${rows.length} design chats`);
+  if (designChats.length) upsert(CLAUDE_DESIGN_CHATS, designChatRows(designChats), 'design chats');
+
+  const artifacts = await artifactRows(archive);
+  if (artifacts.length) upsert(CLAUDE_ARTIFACTS, artifacts, 'artifacts');
+
+  const reflections = await readMany(archive, /(^|\/)reflections\.json$/, /(^|\/)reflections\/[^/]+\.json$/);
+  if (reflections.length) upsert(CLAUDE_REFLECTIONS, reflectionRows(reflections), 'reflections');
+
+  // Claude Code in the cloud: routines, project threads, project memory.
+  const routines = await cloudList(archive, /(^|\/)claude_code_cloud\/routines\.json$/);
+  if (routines.length) upsert(CLAUDE_ROUTINES, routineRows(routines), 'routines');
+
+  const messages = await cloudList(archive, /(^|\/)claude_code_cloud\/channels\/messages\.json$/);
+  if (messages.length) {
+    const channels = await cloudList(archive, /(^|\/)claude_code_cloud\/channels\/channels\.json$/);
+    upsert(CLAUDE_THREADS, threadRows(messages, channels), 'project threads');
   }
 
+  const channelMemory = await cloudList(archive, /(^|\/)claude_code_cloud\/channel_memory_files\.json$/);
+  if (channelMemory.length) upsert(CLAUDE_MEMORY_FILES, channelMemoryFileRows(channelMemory), 'project memory files');
+
   return matched;
+}
+
+/** Split exports come with a manifest naming the export's creation time. */
+async function manifestDate(archive: Archive): Promise<string | null> {
+  for (const f of archive.find(/(^|\/)manifest[^/]*\.json$/)) {
+    try {
+      const m = await archive.readJson(f);
+      if (typeof m?.created_at === 'string' && Array.isArray(m.data_files)) return m.created_at;
+    } catch {
+      // not a manifest
+    }
+  }
+  return null;
 }
 
 export const claude: Connector = {
   id: 'claude',
   displayName: 'Claude',
-  description: 'Conversations, projects, memory and design chats',
+  description: 'Conversations, projects, memory, artifacts and Claude Code threads',
   kind: 'export',
   dbPath: 'claude/chronicle/chronicle.db',
   tables: TABLES,
@@ -280,30 +582,29 @@ export const claude: Connector = {
 
   async ingest(ctx, archive) {
     const stats: RunStats = {};
-    const projectNames = new Map<string, string>();
+    const state: IngestState = { projectNames: new Map(), exportedAt: await manifestDate(archive) };
     for (const t of TABLES) ctx.store.ensureTable(t);
     // Names of projects ingested earlier, for memories that arrive in their own zip.
     for (const r of ctx.store.db.query('SELECT uuid, name FROM projects WHERE name IS NOT NULL').all() as any[]) {
-      projectNames.set(r.uuid, r.name);
+      state.projectNames.set(r.uuid, r.name);
     }
 
-    let matched = await ingestOne(ctx, archive, stats, projectNames);
+    let matched = await ingestOne(ctx, archive, stats, state);
 
-    // A folder of split-export zips: open each one in turn.
-    for (const zip of archive.find(/\.zip$/i)) {
+    // A folder of split-export zips: open each one in turn, projects first.
+    const zips = archive.find(/\.zip$/i).sort((a, b) => Number(!/projects/.test(a)) - Number(!/projects/.test(b)));
+    for (const zip of zips) {
       const inner = await openArchive(archive.abs(zip));
       try {
         ctx.log(`Reading ${zip}`);
-        if (await ingestOne(ctx, inner, stats, projectNames)) matched = true;
+        if (await ingestOne(ctx, inner, stats, state)) matched = true;
         else ctx.log(`  nothing otso reads in ${zip}`);
       } finally {
         await inner.dispose();
       }
     }
 
-    if (!matched) {
-      ctx.log('No Claude conversations, projects, memories or design chats in this file');
-    }
+    if (!matched) ctx.log('Nothing otso reads in this file');
     return stats;
   },
 };
