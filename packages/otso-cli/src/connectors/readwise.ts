@@ -63,7 +63,7 @@ export const READER_LOCATIONS = ['new', 'later', 'shortlist', 'archive'] as cons
 export const READER_SCHEMA_VERSION = '2';
 
 /** Reader's list endpoint allows 20 requests a minute; stay under it. */
-export const readerPacing = { minIntervalMs: 3100 };
+export const readerPacing = { minIntervalMs: 3500 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const isDoc = (d: any) => !d.parent_id && d.location !== 'feed'; // skip highlights/notes and RSS items
@@ -177,6 +177,7 @@ export const readwise: Connector = {
         lastRequest = Date.now();
         const page: any = await getJson(`https://readwise.io/api/v3/list/?${params}`, {
           headers: auth(credentials.accessToken),
+          retries: 8, // a backfill makes ~120 requests; ride out throttling rather than start over
         });
         const results = page.results ?? [];
         const rows = readerRows(results);

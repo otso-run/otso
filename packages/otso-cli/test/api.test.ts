@@ -307,3 +307,22 @@ describe('github', () => {
     expect(rows.find((r: any) => r.title.startsWith('Push')).content).toBe('fix');
   });
 });
+
+describe('http', () => {
+  test('waits as long as a 429 body says when there is no Retry-After header', async () => {
+    const { getJson } = await import('../src/core/http.js');
+    let n = 0;
+    mockFetch([
+      {
+        match: /throttled/,
+        respond: () =>
+          n++ === 0
+            ? { status: 429, body: { detail: 'Request was throttled. Expected available in 0 seconds.' } }
+            : { body: { ok: true } },
+      },
+    ]);
+    const started = Date.now();
+    expect(await getJson('https://example.test/throttled')).toEqual({ ok: true });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(900);
+  });
+});
