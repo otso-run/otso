@@ -3,6 +3,7 @@ import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 import { execa } from 'execa';
 import type { SourceMeta, SourceProgress } from '../../../../types/index.js';
 import { saveCredentials, displayCredentialsPath } from '../../services/credentials.js';
+import { connectAndSync } from '../../services/engine.js';
 
 interface APIFlowProps {
   source: SourceMeta;
@@ -26,6 +27,7 @@ export function APIFlow({
   const [tokenInput, setTokenInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
+  const [summary, setSummary] = useState<string | null>(null);
 
   const instructions = source.exportInstructions || [];
   const currentInstruction = instructions[currentStep];
@@ -130,11 +132,18 @@ export function APIFlow({
     onProgressUpdate({ status: 'in_progress', startedAt: new Date().toISOString() });
 
     try {
-      const credPath = await saveCredentials(`${source.name}-credentials.json`, {
-        source: source.name,
-        token: tokenInput,
-        createdAt: new Date().toISOString(),
-      });
+      // Verify the token with the service, save it, and run the first sync.
+      let credPath = '';
+      const synced = await connectAndSync(source.name, { accessToken: tokenInput });
+      if (synced) {
+        setSummary(synced);
+      } else {
+        credPath = await saveCredentials(`${source.name}-credentials.json`, {
+          source: source.name,
+          accessToken: tokenInput,
+          createdAt: new Date().toISOString(),
+        });
+      }
 
       onProgressUpdate({
         status: 'completed',
@@ -143,8 +152,9 @@ export function APIFlow({
       });
       setState('done');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save credentials');
-      onProgressUpdate({ status: 'error', error: error || 'Save failed' });
+      const message = err instanceof Error ? err.message : 'Failed to save credentials';
+      setError(message);
+      onProgressUpdate({ status: 'error', error: message });
       setState('error');
     }
   }
@@ -265,14 +275,12 @@ export function APIFlow({
         {/* Done state */}
         {state === 'done' && (
           <box flexDirection="column">
-            <text fg="#00D4AA">Credentials saved!</text>
+            <text fg="#00D4AA">{summary ? 'Connected and synced!' : 'Credentials saved!'}</text>
             <box height={1} />
-            <text fg="#FFFFFF">
-              Token saved to: {displayCredentialsPath(`${source.name}-credentials.json`)}
-            </text>
+            <text fg="#FFFFFF">{summary ?? `Token saved to: ${displayCredentialsPath(`${source.name}-credentials.json`)}`}</text>
             <box height={1} />
             <text fg="#666666">
-              The indexer will use this token to fetch your data.
+              {`Run \`otso sync ${source.name}\` any time to fetch what's new.`}
             </text>
             <box height={2} />
             <text fg="#888888">Press Enter to continue</text>

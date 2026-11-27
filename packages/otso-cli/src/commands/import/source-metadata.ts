@@ -1,4 +1,5 @@
 import type { SourceMeta } from '../../types/index.js';
+import { CONNECTORS } from '../../connectors/index.js';
 
 /**
  * Complete metadata for all supported data sources.
@@ -166,7 +167,7 @@ export const SOURCE_METADATA: Record<string, SourceMeta> = {
     description: 'Bookmarks from Pinboard',
     category: 'reading',
     complexity: 'medium',
-    extractionType: 'export',
+    extractionType: 'api',
     settingsUrl: 'https://pinboard.in/export/',
     expectedFilePatterns: ['pinboard_export*.json', 'pinboard*.json'],
     exportInstructions: [
@@ -190,7 +191,7 @@ export const SOURCE_METADATA: Record<string, SourceMeta> = {
     description: 'Highlights and annotations',
     category: 'reading',
     complexity: 'medium',
-    extractionType: 'export',
+    extractionType: 'api',
     settingsUrl: 'https://readwise.io/export',
     expectedFilePatterns: ['readwise-data*.csv', 'readwise*.json'],
     exportInstructions: [
@@ -214,7 +215,7 @@ export const SOURCE_METADATA: Record<string, SourceMeta> = {
     description: 'Scrobble history',
     category: 'music',
     complexity: 'medium',
-    extractionType: 'export',
+    extractionType: 'api',
     settingsUrl: 'https://benjaminbenben.com/lastfm-to-csv/',
     expectedFilePatterns: ['lastfm*.csv', 'scrobbles*.csv'],
     exportInstructions: [
@@ -243,7 +244,7 @@ export const SOURCE_METADATA: Record<string, SourceMeta> = {
     description: 'Activity, stars, and repositories',
     category: 'code',
     complexity: 'medium',
-    extractionType: 'export',
+    extractionType: 'api',
     settingsUrl: 'https://github.com/settings/admin',
     expectedFilePatterns: ['github-*.tar.gz', 'github-*.zip'],
     exportInstructions: [
@@ -292,13 +293,13 @@ export const SOURCE_METADATA: Record<string, SourceMeta> = {
     category: 'curation',
     complexity: 'medium',
     extractionType: 'api',
-    settingsUrl: 'https://dev.are.na/oauth/applications',
+    settingsUrl: 'https://www.are.na/developers/personal-access-tokens',
     exportInstructions: [
       {
         step: 1,
         title: 'Get API Token',
-        description: 'Create an API application at dev.are.na',
-        action: { type: 'open_url', url: 'https://dev.are.na/oauth/applications' },
+        description: 'Create a personal access token on are.na',
+        action: { type: 'open_url', url: 'https://www.are.na/developers/personal-access-tokens' },
       },
       {
         step: 2,
@@ -462,6 +463,21 @@ export const SOURCE_METADATA: Record<string, SourceMeta> = {
     ],
   },
 };
+
+// Connectors are the source of truth for export file names and pages, so
+// the Downloads watcher looks for what the service actually sends.
+for (const c of CONNECTORS) {
+  const meta = SOURCE_METADATA[c.id];
+  if (!meta) continue;
+  if (c.exportGuide && meta.extractionType !== 'api') {
+    meta.expectedFilePatterns = c.exportGuide.filePatterns;
+    meta.settingsUrl = c.exportGuide.url;
+  }
+  if (c.auth) meta.settingsUrl = c.auth.setupUrl;
+  if (c.localPaths) {
+    meta.localPaths = c.localPaths.map((path) => ({ path, platform: 'darwin' as const, description: `${c.displayName} database` }));
+  }
+}
 
 /**
  * Get sources grouped by complexity

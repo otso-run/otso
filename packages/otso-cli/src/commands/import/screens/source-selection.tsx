@@ -6,6 +6,8 @@ interface SourceSelectionScreenProps {
   sources: Record<string, SourceMeta>;
   onSelect: (source: SourceMeta) => void;
   onBack: () => void;
+  /** Tab: finish and go to the summary (run the indexer from there). */
+  onDone?: () => void;
 }
 
 const EXTRACTION_LABELS: Record<string, string> = {
@@ -26,6 +28,7 @@ export function SourceSelectionScreen({
   sources,
   onSelect,
   onBack,
+  onDone,
 }: SourceSelectionScreenProps) {
   const { width, height } = useTerminalDimensions();
   const [cursorIndex, setCursorIndex] = useState(0);
@@ -113,6 +116,10 @@ export function SourceSelectionScreen({
         if (source) {
           onSelect(source);
         }
+        break;
+
+      case 'tab':
+        onDone?.();
         break;
 
       case 'escape':
@@ -224,7 +231,7 @@ export function SourceSelectionScreen({
       {/* Footer */}
       <box marginTop={1}>
         <text fg="#666666">
-          ↑/↓: navigate | Enter: select | Esc: back | Type to search
+          ↑/↓: navigate | Enter: select | Tab: done | Esc: back | Type to search
         </text>
       </box>
     </box>

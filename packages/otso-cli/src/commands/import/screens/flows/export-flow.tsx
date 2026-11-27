@@ -4,6 +4,7 @@ import { copyFile, mkdir } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { execa } from 'execa';
 import type { SourceMeta, SourceProgress, ExportInstruction } from '../../../../types/index.js';
+import { ingestFile } from '../../services/engine.js';
 import { watchForFiles, findExistingFiles, getDownloadsDir, type WatchedFile, type WatchHandle } from '../../services/file-watcher.js';
 
 interface ExportFlowProps {
@@ -27,6 +28,7 @@ export function ExportFlow({
   const [state, setState] = useState<FlowState>('instructions');
   const [currentStep, setCurrentStep] = useState(0);
   const [foundFile, setFoundFile] = useState<WatchedFile | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isWatching, setIsWatching] = useState(false);
   const watchHandleRef = useRef<WatchHandle | null>(null);
@@ -177,13 +179,18 @@ export function ExportFlow({
     onProgressUpdate({ status: 'in_progress', startedAt: new Date().toISOString() });
 
     try {
-      // Create destination directory
-      const dataDir = join(process.cwd(), 'data', 'sources', source.name);
-      await mkdir(dataDir, { recursive: true });
-
-      // Copy the file
-      const destPath = join(dataDir, foundFile.name);
-      await copyFile(foundFile.path, destPath);
+      // Process the export into chronicle.db (a copy of the file is kept in
+      // exports/). Sources without a connector yet just get the file copied.
+      let destPath = foundFile.path;
+      const ingested = await ingestFile(source.name, foundFile.path);
+      if (ingested) {
+        setSummary(ingested);
+      } else {
+        const dataDir = join(process.cwd(), 'data', 'sources', source.name);
+        await mkdir(dataDir, { recursive: true });
+        destPath = join(dataDir, foundFile.name);
+        await copyFile(foundFile.path, destPath);
+      }
 
       onProgressUpdate({
         status: 'completed',
@@ -192,8 +199,9 @@ export function ExportFlow({
       });
       setState('done');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Copy failed');
-      onProgressUpdate({ status: 'error', error: error || 'Copy failed' });
+      const message = err instanceof Error ? err.message : 'Copy failed';
+      setError(message);
+      onProgressUpdate({ status: 'error', error: message });
       setState('error');
     }
   }
@@ -335,7 +343,7 @@ export function ExportFlow({
             <text fg="#00D4AA">Import complete!</text>
             <box height={1} />
             <text fg="#FFFFFF">
-              Saved to: data/sources/{source.name}/{foundFile?.name}
+              {summary ?? `Saved to: data/sources/${source.name}/${foundFile?.name}`}
             </text>
             <box height={2} />
             <text fg="#888888">Press Enter to continue</text>

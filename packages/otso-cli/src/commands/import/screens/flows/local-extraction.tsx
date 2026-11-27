@@ -5,6 +5,7 @@ import { dirname, basename, join } from 'node:path';
 import { homedir } from 'node:os';
 import type { SourceMeta, SourceProgress } from '../../../../types/index.js';
 import { detectSource, checkPermissions } from '../../services/source-detector.js';
+import { syncLocal } from '../../services/engine.js';
 
 interface LocalExtractionFlowProps {
   source: SourceMeta;
@@ -28,6 +29,7 @@ export function LocalExtractionFlow({
   const [detectedPath, setDetectedPath] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copyProgress, setCopyProgress] = useState(0);
+  const [summary, setSummary] = useState<string | null>(null);
 
   // Run detection on mount
   useEffect(() => {
@@ -94,13 +96,18 @@ export function LocalExtractionFlow({
     onProgressUpdate({ status: 'in_progress', startedAt: new Date().toISOString() });
 
     try {
-      // Create destination directory
-      const dataDir = join(process.cwd(), 'data', 'sources', source.name);
-      await mkdir(dataDir, { recursive: true });
-
-      // Copy the file
-      const destPath = join(dataDir, basename(detectedPath));
-      await copyFile(detectedPath, destPath);
+      // Read the app database into chronicle.db; sources without a connector
+      // yet (e.g. Timing) are copied as-is.
+      let destPath = detectedPath;
+      const synced = await syncLocal(source.name);
+      if (synced) {
+        setSummary(synced);
+      } else {
+        const dataDir = join(process.cwd(), 'data', 'sources', source.name);
+        await mkdir(dataDir, { recursive: true });
+        destPath = join(dataDir, basename(detectedPath));
+        await copyFile(detectedPath, destPath);
+      }
 
       setCopyProgress(100);
       onProgressUpdate({
@@ -110,8 +117,9 @@ export function LocalExtractionFlow({
       });
       setState('done');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Copy failed');
-      onProgressUpdate({ status: 'error', error: error || 'Copy failed' });
+      const message = err instanceof Error ? err.message : 'Copy failed';
+      setError(message);
+      onProgressUpdate({ status: 'error', error: message });
       setState('error');
     }
   }
@@ -186,7 +194,7 @@ export function LocalExtractionFlow({
             <text fg="#FFFFFF">Path: {displayPath}</text>
             <box height={1} />
             <text fg="#666666">
-              This will copy the database to data/sources/{source.name}/
+              This reads a copy into data/sources/{source.name}/chronicle/chronicle.db
             </text>
             <box height={2} />
             <text fg="#888888">Press Enter to extract, S to skip</text>
@@ -213,7 +221,7 @@ export function LocalExtractionFlow({
           <box flexDirection="column">
             <text fg="#00D4AA">Extraction complete!</text>
             <box height={1} />
-            <text fg="#FFFFFF">Copied to: data/sources/{source.name}/</text>
+            <text fg="#FFFFFF">{summary ?? `Copied to: data/sources/${source.name}/`}</text>
             <box height={2} />
             <text fg="#888888">Press Enter to continue</text>
           </box>

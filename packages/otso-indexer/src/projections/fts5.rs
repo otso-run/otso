@@ -28,7 +28,7 @@ impl Fts5Projection {
         init_schema(&pool).await?;
 
         // Configure for performance
-        sqlx::query("PRAGMA journal_mode = WAL")
+        sqlx::query(crate::journal_mode_pragma())
             .execute(&pool)
             .await?;
         sqlx::query("PRAGMA synchronous = NORMAL")

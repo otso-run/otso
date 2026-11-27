@@ -97,6 +97,7 @@ function ImportApp({ options }: ImportAppProps) {
           sources={SOURCE_METADATA}
           onSelect={handleSourceSelect}
           onBack={() => setScreen('welcome')}
+          onDone={handleViewSummary}
         />
       );
 
@@ -122,7 +123,6 @@ function ImportApp({ options }: ImportAppProps) {
       return (
         <SummaryScreen
           sourceProgress={sourceProgress}
-          onRunIndexer={() => {}}
           onRestart={() => setScreen('source-selection')}
           onQuit={handleQuit}
         />
