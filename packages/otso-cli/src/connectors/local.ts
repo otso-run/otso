@@ -3,7 +3,7 @@ import { gunzipSync } from 'node:zlib';
 import { EVENTS_TABLE } from '../core/chronicle.js';
 import { APPLE_EPOCH_OFFSET, fromAppleTime, fromUnixSeconds } from '../core/time.js';
 import type { Connector, RunContext, RunStats } from './types.js';
-import { addStats, columnsOf, firstColumn, resolveLocalPath, shortHash, withDatabaseCopy } from './util.js';
+import { addStats, columnsOf, firstColumn, NotOnThisMacError, resolveLocalPath, shortHash, withDatabaseCopy } from './util.js';
 
 /**
  * macOS app databases. Each sync copies the app's SQLite file to a temp
@@ -12,17 +12,29 @@ import { addStats, columnsOf, firstColumn, resolveLocalPath, shortHash, withData
  * Safari, Messages, Notes and Photos need Full Disk Access for the terminal.
  */
 
+type Rows = Record<string, unknown>[];
+/**
+ * What a reader returns: the rows, plus (optionally) ids this Mac used to
+ * store the same items under before they were keyed on a stable iCloud id.
+ * Those older rows are removed so each item is stored once, whichever Mac
+ * synced it.
+ */
+type ReadResult = Rows | { rows: Rows; replaced: string[] };
+
 function localSync(
   connector: Pick<Connector, 'localPaths' | 'displayName'>,
-  read: (db: Database, ctx: RunContext) => Record<string, unknown>[]
+  read: (db: Database, ctx: RunContext) => ReadResult
 ) {
   return async (ctx: RunContext): Promise<RunStats> => {
     const path = connector.localPaths!.map(resolveLocalPath).find(Boolean);
-    if (!path) throw new Error(`${connector.displayName} database not found on this Mac`);
-    const rows = await withDatabaseCopy(path, (db) => read(db, ctx));
+    if (!path) throw new NotOnThisMacError(connector.displayName);
+    const result = await withDatabaseCopy(path, (db) => read(db, ctx));
+    const { rows, replaced } = Array.isArray(result) ? { rows: result, replaced: [] } : result;
     const stats: RunStats = {};
     addStats(stats, 'events', ctx.store.upsert(EVENTS_TABLE, rows));
-    ctx.log(`${rows.length} records read from ${connector.displayName}`);
+    ctx.log(`${rows.length.toLocaleString()} records read from ${connector.displayName}`);
+    const removed = ctx.store.deleteKeys(EVENTS_TABLE, replaced);
+    if (removed) ctx.log(`Removed ${removed.toLocaleString()} older copies stored under this Mac's local ids`);
     return stats;
   };
 }
@@ -42,6 +54,8 @@ export const safari: Connector = {
   tables: [EVENTS_TABLE],
   localPaths: safariPaths,
   permission: 'full-disk-access',
+  // History doesn't sync between Macs, so each Mac gets safari-<device>.
+  perDevice: true,
   sync: localSync({ localPaths: safariPaths, displayName: 'Safari' }, (db) =>
     (
       db
@@ -59,6 +73,54 @@ export const safari: Connector = {
     }))
   ),
 };
+
+// ── Chromium browsers (Helium, …) ─────────────────────────────────────────
+
+/** Chromium stores times as microseconds since 1601-01-01. */
+const CHROMIUM_EPOCH_OFFSET = 11644473600;
+
+/**
+ * Browsing history for any Chromium-based browser, read from each profile's
+ * History file. Visits use the same key as Safari's, so the two line up.
+ * Add a browser by passing the folder it keeps under ~/Library/Application Support.
+ */
+export function chromiumHistory(id: string, displayName: string, appSupportDir: string): Connector {
+  const base = `~/Library/Application Support/${appSupportDir}`;
+  const paths = [`${base}/Default/History`, `${base}/Profile */History`];
+  return {
+    id,
+    displayName,
+    description: 'Browsing history',
+    kind: 'local',
+    dbPath: `${id}/chronicle/chronicle.db`,
+    tables: [EVENTS_TABLE],
+    localPaths: paths,
+    perDevice: true,
+    sync: localSync({ localPaths: paths, displayName }, (db) =>
+      (
+        db
+          .query(
+            `SELECT v.visit_time AS t, u.url, u.title FROM visits v
+             JOIN urls u ON u.id = v.url ORDER BY v.visit_time`
+          )
+          .all() as any[]
+      )
+        .filter((r) => r.t > 0 && /^https?:/.test(r.url))
+        .map((r) => {
+          const unix = r.t / 1e6 - CHROMIUM_EPOCH_OFFSET;
+          return {
+            source_id: safariKey(unix, r.url),
+            type: 'ViewAction',
+            source: id,
+            object: { name: r.title || r.url, url: r.url },
+            end_time: fromUnixSeconds(Math.floor(unix)),
+          };
+        })
+    ),
+  };
+}
+
+export const helium = chromiumHistory('helium', 'Helium', 'net.imput.helium');
 
 // ── Messages ─────────────────────────────────────────────────────────────
 
@@ -180,7 +242,7 @@ export const appleNotes: Connector = {
     const created = firstColumn(cols, ['ZCREATIONDATE3', 'ZCREATIONDATE1', 'ZCREATIONDATE']) ?? 'NULL';
     const modified = firstColumn(cols, ['ZMODIFICATIONDATE1', 'ZMODIFICATIONDATE']) ?? 'NULL';
     const deleted = cols.has('ZMARKEDFORDELETION') ? 'AND COALESCE(n.ZMARKEDFORDELETION, 0) = 0' : '';
-    // Key notes by their Core Data URI (x-coredata://<store>/ICNote/p<pk>), the id Chronicle used.
+    // Chronicle keyed notes by Core Data URI (x-coredata://<store>/ICNote/p<pk>), which differs per Mac.
     let store: string | undefined;
     try {
       store = (db.query('SELECT Z_UUID AS u FROM Z_METADATA LIMIT 1').get() as { u: string } | null)?.u;
@@ -196,15 +258,24 @@ export const appleNotes: Connector = {
          WHERE n.ZTITLE1 IS NOT NULL ${deleted}`
       )
       .all() as any[];
-    return rows.map((r) => ({
-      source_id: store ? `x-coredata://${store}/ICNote/p${r.pk}` : r.id,
+    // ZIDENTIFIER is the note's iCloud id, the same on every Mac. Older syncs
+    // keyed notes by this Mac's Core Data URI; those rows get replaced.
+    const replaced: string[] = [];
+    const out = rows.map((r) => {
+      const legacy = store ? `x-coredata://${store}/ICNote/p${r.pk}` : null;
+      const id = r.id ?? legacy;
+      if (legacy && legacy !== id) replaced.push(legacy);
+      return {
+      source_id: id,
       type: 'CreateAction',
       source: 'apple-notes',
       name: r.title,
       text: decodeNoteBody(r.data) ?? r.snippet ?? '',
       date_created: fromAppleTime(r.created),
       endTime: fromAppleTime(r.modified),
-    }));
+      };
+    });
+    return { rows: out, replaced };
   }),
 };
 
@@ -225,7 +296,8 @@ export const applePhotos: Connector = {
     const hasDesc = aa.has('ZASSETDESCRIPTION');
     const rows = db
       .query(
-        `SELECT a.ZUUID AS uuid, a.ZFILENAME AS filename, a.ZDATECREATED AS created,
+        `SELECT a.ZUUID AS uuid, ${columnsOf(db, 'ZASSET').has('ZCLOUDASSETGUID') ? 'a.ZCLOUDASSETGUID' : 'NULL'} AS cloud,
+                a.ZFILENAME AS filename, a.ZDATECREATED AS created,
                 a.ZLATITUDE AS lat, a.ZLONGITUDE AS lon, a.ZKIND AS kind,
                 ${aa.has('ZTITLE') ? 'aa.ZTITLE' : 'NULL'} AS title,
                 ${aa.has('ZORIGINALFILENAME') ? 'aa.ZORIGINALFILENAME' : 'NULL'} AS original,
@@ -236,10 +308,15 @@ export const applePhotos: Connector = {
          WHERE COALESCE(a.ZTRASHEDSTATE, 0) = 0`
       )
       .all() as any[];
-    return rows.map((r) => {
+    // ZUUID is per library: the same iCloud photo has a different one on each
+    // Mac. ZCLOUDASSETGUID is shared, so key on it and replace ZUUID-keyed rows.
+    const replaced: string[] = [];
+    const out = rows.map((r) => {
       const hasGeo = r.lat != null && r.lat >= -90 && r.lat <= 90 && !(r.lat === 0 && r.lon === 0);
+      const id = r.cloud || r.uuid;
+      if (id !== r.uuid) replaced.push(r.uuid);
       return {
-        source_id: r.uuid,
+        source_id: id,
         type: 'PhotographAction',
         source: 'apple-photos',
         name: r.title || r.original || r.filename,
@@ -249,6 +326,7 @@ export const applePhotos: Connector = {
         dateCreated: fromAppleTime(r.created),
       };
     });
+    return { rows: out, replaced };
   }),
 };
 

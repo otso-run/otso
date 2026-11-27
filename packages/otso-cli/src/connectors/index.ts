@@ -9,7 +9,7 @@ import { claude } from './claude.js';
 import { linkedin } from './linkedin.js';
 import { twitter } from './twitter.js';
 import { googleTakeout } from './google-takeout.js';
-import { safari, imessage, appleNotes, applePhotos, applePodcasts, things } from './local.js';
+import { safari, helium, imessage, appleNotes, applePhotos, applePodcasts, things } from './local.js';
 
 export type { Connector } from './types.js';
 
@@ -28,6 +28,7 @@ export const CONNECTORS: Connector[] = [
   googleTakeout,
   // Local macOS databases
   safari,
+  helium,
   imessage,
   appleNotes,
   applePhotos,

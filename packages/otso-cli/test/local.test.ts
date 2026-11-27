@@ -6,7 +6,10 @@ import { dirname, join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { decodeAttributedBody, decodeNoteBody } from '../src/connectors/local.js';
 import { runSync } from '../src/core/runner.js';
-import { runTomlQueries, sandbox } from './helpers.js';
+import { readFileSync } from 'node:fs';
+import { parse } from 'smol-toml';
+import { indexerConfigPath } from '../src/core/sources-config.js';
+import { REPO_TOML, runTomlQueries, sandbox } from './helpers.js';
 
 // Fake app databases under a throwaway $HOME, shaped like the real ones.
 const realHome = process.env.HOME;
@@ -57,6 +60,15 @@ beforeAll(() => {
   );
 
   appDb(
+    'Library/Application Support/net.imput.helium/Default/History',
+    `CREATE TABLE urls (id INTEGER PRIMARY KEY, url TEXT, title TEXT);
+     CREATE TABLE visits (id INTEGER PRIMARY KEY, url INTEGER, visit_time INTEGER);
+     INSERT INTO urls VALUES (1, 'https://example.com', 'Example'), (2, 'chrome://settings', 'Settings');
+     -- 2024-01-03T18:40:00Z in microseconds since 1601
+     INSERT INTO visits VALUES (1, 1, 13348780800000000), (2, 1, 13348780860000000), (3, 2, 13348780800000000);`
+  );
+
+  appDb(
     'Library/Messages/chat.db',
     `CREATE TABLE message (ROWID INTEGER PRIMARY KEY, guid TEXT, text TEXT, attributedBody BLOB, handle_id INTEGER, date INTEGER, is_from_me INTEGER);
      CREATE TABLE handle (ROWID INTEGER PRIMARY KEY, id TEXT);
@@ -86,10 +98,10 @@ beforeAll(() => {
 
   appDb(
     'Pictures/Photos Library.photoslibrary/database/Photos.sqlite',
-    `CREATE TABLE ZASSET (Z_PK INTEGER PRIMARY KEY, ZUUID TEXT, ZFILENAME TEXT, ZDATECREATED REAL, ZLATITUDE REAL, ZLONGITUDE REAL, ZKIND INTEGER, ZTRASHEDSTATE INTEGER);
+    `CREATE TABLE ZASSET (Z_PK INTEGER PRIMARY KEY, ZUUID TEXT, ZCLOUDASSETGUID TEXT, ZFILENAME TEXT, ZDATECREATED REAL, ZLATITUDE REAL, ZLONGITUDE REAL, ZKIND INTEGER, ZTRASHEDSTATE INTEGER);
      CREATE TABLE ZADDITIONALASSETATTRIBUTES (Z_PK INTEGER PRIMARY KEY, ZASSET INTEGER, ZTITLE TEXT, ZORIGINALFILENAME TEXT, ZASSETDESCRIPTION INTEGER);
      CREATE TABLE ZASSETDESCRIPTION (Z_PK INTEGER PRIMARY KEY, ZLONGDESCRIPTION TEXT);
-     INSERT INTO ZASSET VALUES (1, 'P1', 'IMG_1.HEIC', 726000000, 40.7, -74.0, 0, 0), (2, 'P2', 'IMG_2.HEIC', 726000000, -180, -180, 0, 0), (3, 'P3', 'gone.jpg', 1, 0, 0, 0, 1);
+     INSERT INTO ZASSET VALUES (1, 'P1', 'CLOUD-1', 'IMG_1.HEIC', 726000000, 40.7, -74.0, 0, 0), (2, 'P2', NULL, 'IMG_2.HEIC', 726000000, -180, -180, 0, 0), (3, 'P3', NULL, 'gone.jpg', 1, 0, 0, 0, 1);
      INSERT INTO ZADDITIONALASSETATTRIBUTES VALUES (1, 1, NULL, 'beach.heic', 1), (2, 2, NULL, NULL, NULL);
      INSERT INTO ZASSETDESCRIPTION VALUES (1, 'sunset at the beach');`
   );
@@ -134,12 +146,59 @@ describe('local macOS sources sync idempotently into sources.toml-readable rows'
     return first;
   }
 
-  test('safari', async () => {
+  test('safari goes to this Mac\'s own source', async () => {
     const { sources } = sandbox();
-    expect((await syncTwice('safari')).stats.events.inserted).toBe(2);
-    const rows = runTomlQueries('safari', sources);
+    const r = await syncTwice('safari');
+    expect(r.source).toBe('safari-test-mac');
+    expect(r.stats.events.inserted).toBe(2);
+    const rows = runTomlQueries('safari', sources, REPO_TOML, 'safari-test-mac/chronicle/chronicle.db');
     expect(rows.map((r: any) => r.title).sort()).toEqual(['Example', 'https://example.com']);
     expect(rows.every((r: any) => r.occurred_at.startsWith('2024-01-03'))).toBe(true);
+  });
+
+  test('safari: rows this Mac stored in the shared pre-split source move to its own', async () => {
+    const { sources } = sandbox();
+    await runSync('safari');
+    // Pretend an older otso wrote those visits, plus another Mac's, into safari/.
+    const shared = join(sources, 'safari/chronicle/chronicle.db');
+    mkdirSync(dirname(shared), { recursive: true });
+    const own = new Database(join(sources, 'safari-test-mac/chronicle/chronicle.db'));
+    const keys = (own.query('SELECT source_id FROM events').all() as any[]).map((r) => r.source_id);
+    own.close();
+    const db = new Database(shared, { create: true });
+    db.exec('CREATE TABLE events (source_id TEXT PRIMARY KEY, object TEXT, end_time TEXT)');
+    for (const k of [...keys, 'visit-1-other-mac']) db.prepare('INSERT INTO events (source_id) VALUES (?)').run(k);
+    db.close();
+
+    await runSync('safari');
+    const left = new Database(shared, { readonly: true });
+    expect(left.query('SELECT source_id FROM events').all()).toEqual([{ source_id: 'visit-1-other-mac' }]);
+    left.close();
+  });
+
+  test('helium (Chromium history) is per device too', async () => {
+    const { sources } = sandbox();
+    const r = await syncTwice('helium');
+    expect(r.source).toBe('helium-test-mac');
+    const rows = runTomlQueries('helium', sources, REPO_TOML, 'helium-test-mac/chronicle/chronicle.db');
+    expect(rows.map((x: any) => [x.title, x.occurred_at])).toEqual([
+      ['Example', '2024-01-03T18:40:00Z'],
+      ['Example', '2024-01-03T18:41:00Z'],
+    ]);
+  });
+
+  test('per-device sources are added to the indexer config under their own names', async () => {
+    const { sources } = sandbox();
+    await runSync('safari');
+    await runSync('helium');
+    const path = await indexerConfigPath(sources);
+    const cfg = parse(readFileSync(path, 'utf8')) as any;
+    const dev = cfg.sources.filter((s: any) => s.name.endsWith('-test-mac'));
+    expect(dev.map((s: any) => [s.name, s.enabled, s.db_path])).toEqual([
+      ['safari-test-mac', true, 'safari-test-mac/chronicle/chronicle.db'],
+      ['helium-test-mac', true, 'helium-test-mac/chronicle/chronicle.db'],
+    ]);
+    expect(dev[0].queries.length).toBeGreaterThan(0);
   });
 
   test('imessage, including attributedBody-only messages', async () => {
@@ -154,16 +213,27 @@ describe('local macOS sources sync idempotently into sources.toml-readable rows'
 
   test('apple notes with decoded body, deleted notes skipped', async () => {
     const { sources } = sandbox();
+    // A row an older sync stored under this Mac's Core Data URI.
+    const legacy = join(sources, 'apple-notes/chronicle/chronicle.db');
+    mkdirSync(dirname(legacy), { recursive: true });
+    const db = new Database(legacy, { create: true });
+    db.exec("CREATE TABLE events (source_id TEXT PRIMARY KEY, name TEXT); INSERT INTO events VALUES ('x-coredata://STORE-UUID/ICNote/p1', 'Groceries'), ('x-coredata://OTHER-MAC/ICNote/p9', 'Kept')");
+    db.close();
     await syncTwice('apple-notes');
-    expect(runTomlQueries('apple-notes', sources)).toEqual([
-      { external_id: 'x-coredata://STORE-UUID/ICNote/p1', title: 'Groceries', content: 'Groceries\neggs, milk', occurred_at: '2024-01-03T18:40:00Z', url: null },
+    // Keyed on the iCloud id now, so every Mac stores the same note once.
+    expect(runTomlQueries('apple-notes', sources).filter((r: any) => r.title === 'Groceries')).toEqual([
+      { external_id: 'N1', title: 'Groceries', content: 'Groceries\neggs, milk', occurred_at: '2024-01-03T18:40:00Z', url: null },
     ]);
+    // Another Mac's old rows are left for that Mac to replace.
+    expect(runTomlQueries('apple-notes', sources).map((r: any) => r.external_id).sort()).toEqual(['N1', 'x-coredata://OTHER-MAC/ICNote/p9']);
   });
 
   test('apple photos: captions, real coordinates only, trash skipped', async () => {
     const { sources } = sandbox();
     await syncTwice('apple-photos');
     const rows = runTomlQueries('apple-photos', sources);
+    // The iCloud asset id when there is one, else the library's own uuid.
+    expect(rows.map((r: any) => r.external_id).sort()).toEqual(['CLOUD-1', 'P2']);
     expect(rows.map((r: any) => r.title).sort()).toEqual(['IMG_2.HEIC', 'beach.heic']);
     expect(rows.find((r: any) => r.title === 'beach.heic').content.trim()).toBe('sunset at the beach');
   });
@@ -187,10 +257,10 @@ describe('local macOS sources sync idempotently into sources.toml-readable rows'
     const { sources } = sandbox();
     process.env.HOME = join(home, 'nowhere');
     try {
-      await expect(runSync('safari')).rejects.toThrow(/not found/);
+      await expect(runSync('things')).rejects.toThrow(/isn't on this Mac/);
     } finally {
       process.env.HOME = home;
     }
-    expect(existsSync(join(sources, 'safari/chronicle/chronicle.db'))).toBe(false);
+    expect(existsSync(join(sources, 'things/chronicle/chronicle.db'))).toBe(false);
   });
 });

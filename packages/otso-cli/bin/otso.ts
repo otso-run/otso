@@ -16,6 +16,7 @@ Typical flow:
   otso ingest spotify ~/Downloads/my_spotify_data.zip
   otso sync safari                 read a local macOS database
   otso index                       rebuild the search index from data/sources
+  otso schedule install --every 60 sync every hour from this Mac (launchd)
   otso status                      what's connected and how much is stored`
   );
 
@@ -87,6 +88,21 @@ program
   .requiredOption('--archive <path>', 'Chronicle data folder (the one holding <source>/chronicle/chronicle.db)')
   .option('--only <sources>', 'Comma-separated list, e.g. pinboard,lastfm')
   .action(async (from, opts) => (await import('../src/commands/cli.js')).adoptCommand(from, opts));
+
+program
+  .command('schedule [action] [sources...]')
+  .description('Sync on a timer with a launchd agent: schedule install [sources...] | uninstall | status')
+  .option('--every <minutes>', 'How often to sync', '60')
+  .option('-i, --index', 'Run the indexer after each sync (on the Mac that holds the index)')
+  .option('--dry-run', 'Print the launchd plist instead of installing it')
+  .action(async (action, sources, opts) => {
+    try {
+      await (await import('../src/commands/schedule.js')).scheduleCommand(action, sources, opts);
+    } catch (err) {
+      console.error(`\n✗ ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
 
 program
   .command('search')

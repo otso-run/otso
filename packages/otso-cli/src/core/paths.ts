@@ -47,6 +47,8 @@ export interface Settings {
   /** Where per-source databases live, if not <dataDir>/sources (e.g. an existing Chronicle archive). */
   sourcesDir?: string;
   indexerPath?: string;
+  /** This Mac's name for per-device sources (safari-<device>); defaults from the hostname. */
+  device?: string;
 }
 
 export function readSettings(): Settings {

@@ -261,9 +261,13 @@ FROM events
 # BROWSING
 # ============================================================================
 
+# Browser history is per Mac: each Mac syncs into safari-<device>/, and
+# otso index adds a copy of this entry for every such folder (per_device).
+# This entry itself reads the shared safari/ archive from before the split.
 [[sources]]
 name = "safari"
 enabled = true
+per_device = true
 db_path = "safari/chronicle/chronicle.db"
 category = "browse"
 
@@ -275,6 +279,29 @@ object_type = "WebPage"
 sql = """
 SELECT
     rowid as external_id,
+    json_extract(object, '$.name') as title,
+    COALESCE(json_extract(object, '$.url'), '') as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+"""
+
+# Helium (Chromium). Template only: otso index enables a copy per Mac as helium-<device>.
+[[sources]]
+name = "helium"
+enabled = false
+per_device = true
+db_path = "helium/chronicle/chronicle.db"
+category = "browse"
+
+[[sources.queries]]
+table = "events"
+entry_type = "visit"
+action_type = "ViewAction"
+object_type = "WebPage"
+sql = """
+SELECT
+    source_id as external_id,
     json_extract(object, '$.name') as title,
     COALESCE(json_extract(object, '$.url'), '') as content,
     end_time as occurred_at,

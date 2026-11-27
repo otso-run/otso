@@ -12,7 +12,7 @@ pnpm otso sources        # from the repo root; or `bun bin/otso.ts …` in this 
 | --- | --- | --- |
 | API | Are.na, Readwise, Pinboard, Last.fm, GitHub | `otso auth <source>` once (the token is verified, then saved to `~/.otso/config`), then `otso sync <source>` whenever you like |
 | Export | Spotify, Claude, LinkedIn, Twitter/X, Google Takeout (plus Pinboard JSON and Last.fm CSV) | `otso ingest <source>` shows how to request the archive and opens the page; when it arrives, `otso ingest <source> ~/Downloads/<file>` |
-| Local | Safari, Messages, Apple Notes, Apple Photos, Apple Podcasts, Things 3 | `otso sync <source>` reads a temporary copy of the app's database. Safari, Messages, Notes and Photos need Full Disk Access for your terminal |
+| Local | Safari, Helium, Messages, Apple Notes, Apple Photos, Apple Podcasts, Things 3 | `otso sync <source>` reads a temporary copy of the app's database. Safari, Messages, Notes and Photos need Full Disk Access for your terminal |
 
 `otso import` runs the same steps as a guided terminal UI.
 
@@ -49,6 +49,15 @@ Then `main`, a feature branch, or a worktree all sync into the same archive and 
 
 Keep the index local. On SMB the indexer's parallel writes hit `database is locked` (tested); the per-source databases are fine there, and the CLI switches them from WAL to a rollback journal automatically on network shares (`OTSO_SQLITE_JOURNAL=wal|delete` overrides).
 
+### Several Macs, one archive
+
+Point every Mac's `sources-dir` at the same share; index on one of them.
+
+- **Browser history** (Safari, Helium) doesn't sync between Macs, so each Mac writes its own source: `safari-<device>/`, `helium-<device>/`. The device name comes from the Mac's hostname the first time and is saved as `device` in `~/.otso/config/settings.json` (`otso config set device <name>` to change it). `otso index` finds every `<source>-<device>/` folder in sources-dir and indexes it under that name, so search shows which Mac each visit came from. The first per-device sync also moves that Mac's rows out of the old shared `safari/` source.
+- **iCloud data** (Messages, Notes, Photos) is the same on every Mac, so it stays one source each, keyed on the iCloud id (message guid, note `ZIDENTIFIER`, photo `ZCLOUDASSETGUID`). Whichever Mac syncs, an item is stored once. Rows an older otso stored under a Mac's local ids are replaced the next time that Mac syncs; run `otso index --fresh` afterwards so search drops the old copies.
+- A local source whose app isn't on this Mac (Things on a Mac without it) is skipped by `otso sync`, not an error.
+- If sources-dir is on a share that isn't mounted, sync stops instead of writing to an empty `/Volumes/<share>` folder.
+
 Each `chronicle.db` has the tables the `sources.toml` queries read, plus an `_otso_sync` table holding the sync cursor and the last run. Deleting a source's `chronicle.db` resets it.
 
 ## Indexing
@@ -57,11 +66,22 @@ Each `chronicle.db` has the tables the `sources.toml` queries read, plus an `_ot
 
 ## Running on a schedule
 
-`otso sync` with no arguments syncs every connected API source and every local source that has been synced before. To also index, add `--index`:
+`otso sync` with no arguments syncs every connected API source and every local source that's on this Mac and has been synced before (by any Mac). Each source reports what's new and what's already stored, and when and from which Mac it was last synced. To also index, add `--index`:
 
 ```bash
 cd ~/GitHub/otso && pnpm otso sync --index
 ```
+
+To sync on a timer, install a launchd agent from a checkout outside `~/Documents` (launchd agents can't read it):
+
+```bash
+pnpm otso schedule install --every 60            # all sources, hourly
+pnpm otso schedule install safari helium --every 30
+pnpm otso schedule status
+pnpm otso schedule uninstall
+```
+
+Runs are logged to `~/Library/Logs/otso/sync.log`. Add `--index` only on the Mac that holds the index. Safari, Messages, Notes and Photos need Full Disk Access for the `bun` binary the agent runs (install prints its path).
 
 For non-interactive auth, set the credential fields as environment variables, for example `OTSO_ARENA_ACCESS_TOKEN`, `OTSO_LASTFM_USERNAME` and `OTSO_LASTFM_API_KEY`.
 

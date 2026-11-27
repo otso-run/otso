@@ -36,6 +36,7 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
 
   // Browse (Web/App Usage)
   'safari': { label: 'Safari', cat: 'browse', icon: '🧭' },
+  'helium': { label: 'Helium', cat: 'browse', icon: '◎' },
   'chrome': { label: 'Chrome', cat: 'browse', icon: '◉' },
   'google-search': { label: 'Google', cat: 'browse', icon: '🔍' },
   'atlas': { label: 'Atlas', cat: 'browse', icon: '🗺' },
@@ -116,8 +117,15 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
 };
 
 // Get source info with fallback for unknown sources
+// Per-device sources (safari-<device>) and per-account ones fall back to their
+// base source, with the suffix shown so you can tell the Macs apart.
 export function getSourceInfo(sourceName: string) {
-  return SOURCES[sourceName] || { label: sourceName, cat: 'files', icon: '📄' };
+  if (SOURCES[sourceName]) return SOURCES[sourceName];
+  for (let i = sourceName.lastIndexOf('-'); i > 0; i = sourceName.lastIndexOf('-', i - 1)) {
+    const base = SOURCES[sourceName.slice(0, i)];
+    if (base) return { ...base, label: `${base.label} · ${sourceName.slice(i + 1)}` };
+  }
+  return { label: sourceName, cat: 'files', icon: '📄' };
 }
 
 // Get category info
