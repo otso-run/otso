@@ -4,8 +4,9 @@ import type { Connector, RunStats } from './types.js';
 import { addStats } from './util.js';
 
 /**
- * Readwise highlights through the v2 export API. After the first full pull
- * only highlights updated since the previous sync are fetched.
+ * Readwise highlights (v2 export API) and Reader documents (v3 list API:
+ * saved articles, PDFs, etc., minus RSS feed items). After the first full
+ * pull, each only asks for items updated since the previous sync.
  */
 
 const API = 'https://readwise.io/api/v2';
@@ -39,10 +40,38 @@ export function readwiseRows(books: any[]) {
   return rows;
 }
 
+/** Reader documents (saved articles, PDFs, …), keyed by Reader's own id. */
+export function readerRows(docs: any[]) {
+  return docs
+    .filter((d) => !d.parent_id && d.location !== 'feed') // skip highlights/notes and RSS items
+    .map((d) => ({
+      source_id: d.id,
+      type: 'ReadAction',
+      source: 'readwise',
+      object: {
+        '@type': 'Article',
+        name: d.title,
+        url: d.source_url || d.url,
+        author: d.author,
+        category: d.category,
+        summary: d.summary,
+        site_name: d.site_name,
+        word_count: d.word_count,
+      },
+      result: {
+        location: d.location,
+        readingProgress: d.reading_progress,
+        tags: Object.keys(d.tags ?? {}),
+      },
+      startTime: d.saved_at || d.created_at,
+      endTime: d.last_opened_at || null,
+    }));
+}
+
 export const readwise: Connector = {
   id: 'readwise',
   displayName: 'Readwise',
-  description: 'Highlights and annotations',
+  description: 'Highlights and Reader articles',
   kind: 'api',
   dbPath: 'readwise/chronicle/chronicle.db',
   tables: [EVENTS_TABLE],
@@ -78,6 +107,25 @@ export const readwise: Connector = {
 
     store.setState('updatedAfter', startedAt);
     log(`${books} books with new or changed highlights`);
+
+    // Reader documents
+    const readerSince = full ? null : store.getState('readerUpdatedAfter');
+    let docs = 0;
+    cursor = null;
+    do {
+      const params = new URLSearchParams();
+      if (readerSince) params.set('updatedAfter', readerSince);
+      if (cursor) params.set('pageCursor', cursor);
+      const page: any = await getJson(`https://readwise.io/api/v3/list/?${params}`, {
+        headers: auth(credentials.accessToken),
+      });
+      const rows = readerRows(page.results ?? []);
+      docs += rows.length;
+      addStats(stats, 'events', store.upsert(EVENTS_TABLE, rows));
+      cursor = page.nextPageCursor ?? null;
+    } while (cursor);
+    store.setState('readerUpdatedAfter', startedAt);
+    log(`${docs} new or changed Reader documents`);
     return stats;
   },
 };

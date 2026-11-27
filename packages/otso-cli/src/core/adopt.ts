@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite';
 import { copyFile, mkdir, mkdtemp, rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { existsSync, readdirSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readdirSync, readSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { ARENA_BLOCKS, ARENA_CHANNELS } from '../connectors/arena.js';
 import { CLAUDE_CONVERSATIONS } from '../connectors/claude.js';
@@ -230,6 +230,28 @@ export function adoptions(archive: string): Adoption[] {
         },
       ],
     },
+    {
+      // Chronicle's Notion export kept pages and databases in one records
+      // table; sources.toml reads a pages table.
+      name: 'notion',
+      from: 'notion/chronicle/chronicle.db',
+      to: 'notion/chronicle/chronicle.db',
+      tables: [
+        {
+          from: 'records',
+          def: { name: 'pages', key: 'id', columns: ['id', 'title', 'content', 'created_time', 'url', 'kind', 'path'] },
+          map: (r) => ({
+            id: r.id,
+            title: r.title,
+            content: r.content ?? '',
+            created_time: normalizeTime(r.created_at) ?? normalizeTime(r.updated_at),
+            url: null,
+            kind: r.record_type,
+            path: r.path,
+          }),
+        },
+      ],
+    },
     ...twitterAccounts(archive).map((user) => ({
       name: `twitter-${user}`,
       from: `twitter/@${user}/chronicle/chronicle.db`,
@@ -241,6 +263,41 @@ export function adoptions(archive: string): Adoption[] {
       toml: { source: `twitter-${user}`, block: twitterToml(user) },
     })),
   ];
+}
+
+/** SQLite header bytes 18-19 are 2 for WAL-mode databases. */
+function isWalFile(path: string): boolean {
+  const fd = openSync(path, 'r');
+  try {
+    const header = Buffer.alloc(20);
+    readSync(fd, header, 0, 20, 0);
+    return header[18] === 2 || header[19] === 2;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * Copy a database, switching it to a rollback journal on the way. A WAL-mode
+ * file can't be opened read-only from a share without its -shm file.
+ */
+async function copyOutOfWal(src: string, dest: string): Promise<void> {
+  const dir = await mkdtemp(join(tmpdir(), 'otso-copy-'));
+  try {
+    const local = join(dir, 'chronicle.db');
+    await copyFile(src, local);
+    // Committed data may still sit in the WAL file; bring it along so the
+    // conversion folds it in.
+    if (existsSync(`${src}-wal`)) await copyFile(`${src}-wal`, `${local}-wal`);
+    const db = new Database(local);
+    db.exec('PRAGMA journal_mode = DELETE');
+    db.close();
+    await mkdir(dirname(dest), { recursive: true });
+    await copyFile(local, `${dest}.incoming`);
+    await rename(`${dest}.incoming`, dest);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 export interface AdoptResult {
@@ -278,6 +335,8 @@ async function adoptInto(path: string, src: string, a: Adoption, log: (m: string
       for (const r of db.query(`SELECT * FROM "${t.from}" ORDER BY rowid`).iterate() as Iterable<Row>) {
         read++;
         const m = t.map(r);
+        // Chronicle sometimes stored the action in "@type" instead of type.
+        if (m && def.columns.includes('type') && !m.type && m['@type']) m.type = m['@type'];
         if (m) rows.push(m);
       }
       const s: UpsertStats = store.upsert(def, rows);
@@ -311,19 +370,19 @@ export async function adoptChronicle(
 
   // Sources otso has no connector for (Timing, Foursquare, Notion, …): copy
   // the database as it is so the sources.toml queries keep working.
-  if (!opts.only?.length) {
+  {
     const covered = new Set(adoptions(archive).map((a) => a.to));
     for (const s of (await readSourcesToml()).sources ?? []) {
       if (!s.db_path || covered.has(s.db_path)) continue;
+      if (opts.only?.length && !opts.only.includes(s.name)) continue;
       const src = join(archive, s.db_path);
       const dest = join(getSourcesDir(), s.db_path);
       if (!existsSync(src)) continue;
-      if (existsSync(dest)) {
+      if (existsSync(dest) && !isWalFile(dest)) {
         results.push({ name: s.name, status: 'skipped', detail: 'already in sources-dir' });
         continue;
       }
-      await mkdir(dirname(dest), { recursive: true });
-      await copyFile(src, dest);
+      await copyOutOfWal(src, dest);
       log(`${s.name}: copied as is`);
       results.push({ name: s.name, status: 'copied', detail: 'copied as is (no otso connector)' });
     }

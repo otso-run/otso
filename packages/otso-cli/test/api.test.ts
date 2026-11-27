@@ -90,13 +90,27 @@ describe('readwise', () => {
             : { results: [{ title: 'Book A', source_url: 'https://a', highlights: [{ id: 1, text: 'first', created_at: '2024-01-01T00:00:00Z' }] }], nextPageCursor: 'p2' },
         }),
       },
+      {
+        match: /\/api\/v3\/list\//,
+        respond: () => ({
+          body: {
+            results: [
+              { id: '01docA', title: 'An article', source_url: 'https://article', summary: 'about it', location: 'later', saved_at: '2024-02-01T00:00:00Z', tags: {} },
+              { id: '01feed', title: 'RSS item', location: 'feed', saved_at: '2024-02-01T00:00:00Z' },
+              { id: '01hl', parent_id: '01docA', title: 'a highlight', location: 'later', saved_at: '2024-02-01T00:00:00Z' },
+            ],
+            nextPageCursor: null,
+          },
+        }),
+      },
     ]);
     await authenticate('readwise', { accessToken: 'tok' });
     const r = await runSync('readwise');
-    expect(r.stats.events.inserted).toBe(2);
+    expect(r.stats.events.inserted).toBe(3);
     expect(runTomlQueries('readwise', sources).map((x: any) => [x.title, x.content])).toEqual([
       ['Book A', 'first'],
       ['Book B', 'second'],
+      ['An article', 'about it'],
     ]);
     calls.length = 0;
     await runSync('readwise');

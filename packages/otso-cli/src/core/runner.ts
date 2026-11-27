@@ -1,12 +1,12 @@
 import { existsSync, rmSync, statSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
-import { requireConnector, CONNECTORS } from '../connectors/index.js';
+import { getConnector, requireConnector, CONNECTORS } from '../connectors/index.js';
 import type { Connector, RunStats } from '../connectors/types.js';
 import { openArchive, keepExportCopy } from './archive.js';
 import { ChronicleStore } from './chronicle.js';
 import { loadCredentials, saveCredentials, type Credentials } from './credentials.js';
 import { getSourcesDir } from './paths.js';
-import { ensureSourceBlock } from './sources-config.js';
+import { ensureSourceBlock, getLocalSourcesPath, readSourcesToml } from './sources-config.js';
 import { withLocalStaging } from './staging.js';
 
 /**
@@ -165,6 +165,33 @@ export async function sourceStatuses(): Promise<SourceStatus[]> {
       const store = ChronicleStore.open(path);
       try {
         status.rows = c.tables.reduce((n, t) => n + store.count(t.name), 0);
+        const last = store.getState('last_run');
+        if (last) status.lastRun = JSON.parse(last);
+      } finally {
+        store.close();
+      }
+    }
+    out.push(status);
+  }
+
+  // Personal sources from ~/.otso/config/sources.local.toml (e.g. twitter-<handle>).
+  const known = new Set(CONNECTORS.map((c) => c.dbPath));
+  for (const s of (await readSourcesToml(getLocalSourcesPath())).sources ?? []) {
+    if (!s.db_path || known.has(s.db_path)) continue;
+    const base = getConnector(s.name.replace(/-[^-]+$/, ''));
+    const path = join(getSourcesDir(), s.db_path);
+    const status: SourceStatus = {
+      id: s.name,
+      displayName: s.name,
+      kind: base?.kind ?? 'export',
+      connected: null,
+      dbExists: existsSync(path) && statSync(path).size > 0,
+      rows: 0,
+    };
+    if (status.dbExists) {
+      const store = ChronicleStore.open(path);
+      try {
+        status.rows = (base?.tables ?? []).reduce((n, t) => n + store.count(t.name), 0);
         const last = store.getState('last_run');
         if (last) status.lastRun = JSON.parse(last);
       } finally {
