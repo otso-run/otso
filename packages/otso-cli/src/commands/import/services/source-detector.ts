@@ -2,6 +2,7 @@ import { access, constants, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { SourceMeta, LocalPathConfig } from '../../../types/index.js';
+import { resolveLocalPath } from '../../../connectors/util.js';
 
 export interface DetectionResult {
   found: boolean;
@@ -55,7 +56,8 @@ export async function detectSource(source: SourceMeta): Promise<DetectionResult>
   }
 
   for (const pathConfig of applicablePaths) {
-    const expandedPath = expandPath(pathConfig.path);
+    // resolveLocalPath also expands a "*" segment (e.g. Things' ThingsData-XXXX folder)
+    const expandedPath = resolveLocalPath(pathConfig.path) ?? expandPath(pathConfig.path);
 
     try {
       const stats = await stat(expandedPath);

@@ -1,16 +1,27 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 import { program } from 'commander';
 
 program
   .name('otso')
   .description('Otso - Own your digital trails')
-  .version('0.1.0');
+  .version('0.1.0')
+  .addHelpText(
+    'after',
+    `
+Typical flow:
+  otso sources                     list what can be imported and how
+  otso auth arena                  connect an API source (token saved to ~/.otso/config)
+  otso sync arena                  fetch new data (safe to repeat; run it on a schedule)
+  otso ingest spotify ~/Downloads/my_spotify_data.zip
+  otso sync safari                 read a local macOS database
+  otso index                       rebuild the search index from data/sources
+  otso status                      what's connected and how much is stored`
+  );
 
-// Phase 1: Import command
 program
   .command('import')
-  .description('Import data from configured sources')
+  .description('Guided setup in the terminal UI')
   .option('-r, --resume', 'Resume previous session')
   .option('-s, --source <name>', 'Import specific source only')
   .option('-c, --config <path>', 'Path to sources.toml', 'data/config/sources.toml')
@@ -19,15 +30,71 @@ program
     await runImport(options);
   });
 
-// Future: Search command (placeholder)
+program
+  .command('sources')
+  .description('List supported sources and how each is imported')
+  .action(async () => (await import('../src/commands/cli.js')).sourcesCommand());
+
+program
+  .command('status')
+  .description('Show which sources are connected and how much data each holds')
+  .action(async () => (await import('../src/commands/cli.js')).statusCommand());
+
+program
+  .command('auth <source>')
+  .description('Connect an API source and save its token (verified first)')
+  .option('--logout', 'Remove saved credentials for this source')
+  .option('--no-open', "Don't open the setup page in a browser")
+  .action(async (source, opts) => (await import('../src/commands/cli.js')).authCommand(source, opts));
+
+program
+  .command('sync [sources...]')
+  .description('Fetch new data from API and local sources (all connected ones by default)')
+  .option('--full', 'Ignore saved cursors and re-fetch everything')
+  .option('-i, --index', 'Run the indexer afterwards')
+  .action(async (sources, opts) => (await import('../src/commands/cli.js')).syncCommand(sources, opts));
+
+program
+  .command('ingest <source> [files...]')
+  .description('Process a downloaded export (zip, folder, json or csv); without a file, shows how to get one')
+  .option('-i, --index', 'Run the indexer afterwards')
+  .action(async (source, files, opts) => (await import('../src/commands/cli.js')).ingestCommand(source, files, opts));
+
+program
+  .command('index')
+  .description('Build the event store and search index from data/sources with otso-indexer')
+  .option('-s, --source <name>', 'Index one sources.toml entry only')
+  .option('--fixtures', 'Index data/fixtures (mock data) instead')
+  .option('--fresh', 'Move the current index aside and rebuild it from scratch')
+  .action(async (opts) => (await import('../src/commands/cli.js')).indexCommand(opts));
+
+program
+  .command('config [action] [key] [value]')
+  .description('Show where otso keeps data, or: config set data-dir|sources-dir|indexer <path> | config unset <key>')
+  .action(async (action, key, value) => (await import('../src/commands/cli.js')).configCommand(action, key, value));
+
+program
+  .command('migrate <from>')
+  .description('Import credentials from another tool; "chronicle" reads ~/.config/chronicle/etl (values are never printed)')
+  .option('--dir <path>', 'chronicle-etl config folder', '~/.config/chronicle/etl')
+  .option('--no-verify', 'Save without checking each token with its service')
+  .option('--overwrite', 'Replace credentials otso already has')
+  .action(async (from, opts) => (await import('../src/commands/cli.js')).migrateCommand(from, opts));
+
+program
+  .command('adopt <from>')
+  .description('Bring an existing archive into sources-dir with otso ids, so syncs continue from it (the archive is read-only)')
+  .requiredOption('--archive <path>', 'Chronicle data folder (the one holding <source>/chronicle/chronicle.db)')
+  .option('--only <sources>', 'Comma-separated list, e.g. pinboard,lastfm')
+  .action(async (from, opts) => (await import('../src/commands/cli.js')).adoptCommand(from, opts));
+
 program
   .command('search')
   .description('Search your archive (coming soon)')
   .action(() => {
-    console.log('Search command coming soon');
+    console.log('Search command coming soon; run otso-search (packages/otso-search) for now');
   });
 
-// Future: Publish command (placeholder)
 program
   .command('publish')
   .description('Publish to your site (coming soon)')
@@ -35,12 +102,4 @@ program
     console.log('Publish command coming soon');
   });
 
-// Future: Config command (placeholder)
-program
-  .command('config')
-  .description('Manage configuration (coming soon)')
-  .action(() => {
-    console.log('Config command coming soon');
-  });
-
-program.parse();
+await program.parseAsync();

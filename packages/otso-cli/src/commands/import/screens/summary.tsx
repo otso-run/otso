@@ -1,9 +1,10 @@
+import { useState } from 'react';
 import { useKeyboard, useTerminalDimensions } from '@opentui/react';
+import { buildIndex } from '../services/engine.js';
 import type { SourceProgress } from '../../../types/index.js';
 
 interface SummaryScreenProps {
   sourceProgress: Record<string, SourceProgress>;
-  onRunIndexer: () => void;
   onRestart: () => void;
   onQuit: () => void;
 }
@@ -21,16 +22,26 @@ const STATUS_ICONS: Record<string, { icon: string; color: string }> = {
 
 export function SummaryScreen({
   sourceProgress,
-  onRunIndexer,
   onRestart,
   onQuit,
 }: SummaryScreenProps) {
   const { width, height } = useTerminalDimensions();
+  const [indexState, setIndexState] = useState<{ running: boolean; message?: string; error?: boolean }>({ running: false });
+
+  async function runIndexer() {
+    if (indexState.running) return;
+    setIndexState({ running: true, message: 'Indexing…' });
+    try {
+      setIndexState({ running: false, message: await buildIndex() });
+    } catch (err) {
+      setIndexState({ running: false, error: true, message: err instanceof Error ? err.message : String(err) });
+    }
+  }
 
   useKeyboard((key) => {
     switch (key.name) {
       case 'i':
-        onRunIndexer();
+        runIndexer();
         break;
       case 'r':
         onRestart();
@@ -152,7 +163,7 @@ export function SummaryScreen({
       <box flexDirection="column" alignItems="center" width={60}>
         <text fg="#888888">Next Steps:</text>
         <box height={1} />
-        <text>Run the indexer to process extracted data:</text>
+        <text>Press i to build the search index, or later run:</text>
         <box height={1} />
         <box
           backgroundColor="#333333"
@@ -161,8 +172,16 @@ export function SummaryScreen({
           paddingRight={2}
         >
           <text fg="#00D4AA">
-            <strong>cargo run -p otso-indexer -- build</strong>
+            <strong>otso index</strong>
           </text>
+        </box>
+        {indexState.message && (
+          <box marginTop={1}>
+            <text fg={indexState.error ? '#FF6B6B' : indexState.running ? '#FFB800' : '#00D4AA'}>{indexState.message}</text>
+          </box>
+        )}
+        <box marginTop={1}>
+          <text fg="#666666">Keep API sources current with: otso sync</text>
         </box>
       </box>
 

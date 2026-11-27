@@ -8,6 +8,7 @@ import type { SourceProgress } from '../../../../types/index.js';
 import type { SourcePlugin, PluginStep, FormField } from '../../plugins/types.js';
 import { detectSource, checkPermissions } from '../../services/source-detector.js';
 import { saveCredentials as writeCredentialsFile, displayCredentialsPath } from '../../services/credentials.js';
+import { connectAndSync, syncLocal } from '../../services/engine.js';
 
 interface PluginFlowProps {
   plugin: SourcePlugin;
@@ -44,6 +45,7 @@ export function PluginFlow({
   const [inputValue, setInputValue] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [detectedPath, setDetectedPath] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
 
   const currentStep = plugin.steps[currentStepIndex];
   const isLastStep = currentStepIndex === plugin.steps.length - 1;
@@ -174,11 +176,17 @@ export function PluginFlow({
     onProgressUpdate({ status: 'in_progress', startedAt: new Date().toISOString() });
 
     try {
-      const dataDir = join(process.cwd(), 'data', 'sources', plugin.id);
-      await mkdir(dataDir, { recursive: true });
-
-      const destPath = join(dataDir, basename(detectedPath));
-      await copyFile(detectedPath, destPath);
+      // Sources with a connector are read into chronicle.db; others are copied as-is.
+      const synced = await syncLocal(plugin.id);
+      let destPath = '';
+      if (synced) {
+        setSummary(synced);
+      } else {
+        const dataDir = join(process.cwd(), 'data', 'sources', plugin.id);
+        await mkdir(dataDir, { recursive: true });
+        destPath = join(dataDir, basename(detectedPath));
+        await copyFile(detectedPath, destPath);
+      }
 
       onProgressUpdate({
         status: 'completed',
@@ -187,8 +195,9 @@ export function PluginFlow({
       });
       setState('done');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Copy failed');
-      onProgressUpdate({ status: 'error', error: error || 'Copy failed' });
+      const message = err instanceof Error ? err.message : 'Copy failed';
+      setError(message);
+      onProgressUpdate({ status: 'error', error: message });
       setState('error');
     }
   }
@@ -208,14 +217,18 @@ export function PluginFlow({
         }
       }
 
-      const credPath = await writeCredentialsFile(
-        plugin.credentialsFile || `${plugin.id}-credentials.json`,
-        {
+      // Verify against the API, save, and run the first sync.
+      const synced = await connectAndSync(plugin.id, formData);
+      let credPath = '';
+      if (synced) {
+        setSummary(synced);
+      } else {
+        credPath = await writeCredentialsFile(plugin.credentialsFile || `${plugin.id}-credentials.json`, {
           source: plugin.id,
           ...formData,
           createdAt: new Date().toISOString(),
-        }
-      );
+        });
+      }
 
       onProgressUpdate({
         status: 'completed',
@@ -224,8 +237,9 @@ export function PluginFlow({
       });
       setState('done');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save credentials');
-      onProgressUpdate({ status: 'error', error: error || 'Save failed' });
+      const message = err instanceof Error ? err.message : 'Failed to save credentials';
+      setError(message);
+      onProgressUpdate({ status: 'error', error: message });
       setState('error');
     }
   }
@@ -568,7 +582,7 @@ export function PluginFlow({
           <box height={1} />
           <text fg="#FFFFFF">{padLine(`Path: ${displayPath}`, contentWidth)}</text>
           <box height={1} />
-          <text fg="#666666">{padLine(`This will copy the database to data/sources/${plugin.id}/`, contentWidth)}</text>
+          <text fg="#666666">{padLine(`This reads a copy into data/sources/${plugin.id}/chronicle/chronicle.db`, contentWidth)}</text>
           <box height={2} />
           <text fg="#888888">{padLine('Press Enter to extract, S to skip', contentWidth)}</text>
         </box>
@@ -604,10 +618,15 @@ export function PluginFlow({
             <text fg="#00D4AA">Setup complete!</text>
             <box height={1} />
             <text fg="#FFFFFF">
-              {plugin.extractionType === 'api'
+              {summary
+                ? summary
+                : plugin.extractionType === 'api'
                 ? `Credentials saved to: ${displayCredentialsPath(plugin.credentialsFile || `${plugin.id}-credentials.json`)}`
                 : `Data copied to: data/sources/${plugin.id}/`}
             </text>
+            {plugin.extractionType === 'api' && (
+              <text fg="#888888">{`Run \`otso sync ${plugin.id}\` any time to fetch what's new.`}</text>
+            )}
             <box height={2} />
             <text fg="#888888">Press Enter to continue</text>
           </box>

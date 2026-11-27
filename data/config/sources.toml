@@ -53,7 +53,23 @@ SELECT
     COALESCE(json_extract(object, '$.name'), '') as content,
     startTime as occurred_at,
     json_extract(object, '$.url') as url
-FROM events
+FROM events WHERE type = 'HighlightAction'
+"""
+
+# Reader documents (saved articles, PDFs); RSS feed items are not synced
+[[sources.queries]]
+table = "events"
+entry_type = "article"
+action_type = "ReadAction"
+object_type = "Article"
+sql = """
+SELECT
+    source_id as external_id,
+    COALESCE(json_extract(object, '$.name'), json_extract(object, '$.url')) as title,
+    COALESCE(json_extract(object, '$.summary'), '') as content,
+    startTime as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events WHERE type = 'ReadAction'
 """
 
 # ============================================================================

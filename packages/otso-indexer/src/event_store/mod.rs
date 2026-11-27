@@ -126,7 +126,7 @@ impl SqliteEventStore {
         schema::init_schema(&pool).await?;
 
         // Configure WAL mode
-        sqlx::query("PRAGMA journal_mode = WAL")
+        sqlx::query(crate::journal_mode_pragma())
             .execute(&pool)
             .await?;
         sqlx::query("PRAGMA synchronous = NORMAL")

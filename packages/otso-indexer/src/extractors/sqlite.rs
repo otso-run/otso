@@ -79,10 +79,17 @@ pub async fn extract_from_sqlite(
         .with_context(|| format!("Failed to execute query for {}", source_name))?;
 
     let mut events = Vec::with_capacity(rows.len());
+    let mut undated = 0usize;
 
     for row in rows {
-        let event = row_to_event(&row, source_name, query, default_visibility)?;
-        events.push(event);
+        match extract_timestamp(&row) {
+            Some(_) => events.push(row_to_event(&row, source_name, query, default_visibility)?),
+            None => undated += 1,
+        }
+    }
+    if undated > 0 {
+        // Dating these "now" put old items at the top of the timeline.
+        tracing::warn!("{}: skipped {} rows with no usable date", source_name, undated);
     }
 
     Ok(events)
@@ -95,14 +102,21 @@ fn row_to_event(
     default_visibility: Option<&str>,
 ) -> Result<Event> {
     // Extract required fields
-    let source_id: String = row
-        .try_get("external_id")
-        .or_else(|_| row.try_get("source_id"))
-        .or_else(|_| row.try_get("id"))
-        .unwrap_or_else(|_| Uuid::new_v4().to_string());
+    // Integer ids (e.g. `rowid as external_id`) must be read as integers;
+    // reading them as text fails and used to fall through to a random UUID,
+    // which re-inserted every such row on every build.
+    let id_column = |name: &str| -> Option<String> {
+        row.try_get::<String, _>(name)
+            .ok()
+            .or_else(|| row.try_get::<i64, _>(name).ok().map(|n| n.to_string()))
+    };
+    let source_id: String = id_column("external_id")
+        .or_else(|| id_column("source_id"))
+        .or_else(|| id_column("id"))
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-    // Parse timestamp from various possible column names
-    let occurred_at = extract_timestamp(row)?;
+    // Callers skip rows without a usable date before getting here.
+    let occurred_at = extract_timestamp(row).context("row has no usable date")?;
 
     // Build payload from all columns
     let payload = build_payload(row)?;
@@ -148,8 +162,15 @@ fn row_to_event(
     })
 }
 
+/// Latest believable time: a day past now (dates further ahead are bad data,
+/// like a podcast "played" in 2040).
+fn latest_plausible() -> i64 {
+    chrono::Utc::now().timestamp() + 86_400
+}
+
 /// Extract timestamp from row, trying multiple column names and formats
-fn extract_timestamp(row: &sqlx::sqlite::SqliteRow) -> Result<i64> {
+fn extract_timestamp(row: &sqlx::sqlite::SqliteRow) -> Option<i64> {
+    let ok = |ts: i64| (ts > 0 && ts <= latest_plausible()).then_some(ts);
     // Try various column names
     let timestamp_columns = [
         "occurred_at",
@@ -164,36 +185,31 @@ fn extract_timestamp(row: &sqlx::sqlite::SqliteRow) -> Result<i64> {
     for col in timestamp_columns {
         // Try as integer first (Unix timestamp)
         if let Ok(ts) = row.try_get::<i64, _>(col) {
-            // Validate it's a reasonable timestamp
-            if ts > 0 && ts < 4102444800 {
-                // Before year 2100
-                return Ok(ts);
+            // Seconds, or milliseconds
+            let ts = if ts > 1_000_000_000_000 { ts / 1000 } else { ts };
+            if let Some(ts) = ok(ts) {
+                return Some(ts);
             }
-            // Might be milliseconds
-            if ts > 1000000000000 && ts < 4102444800000 {
-                return Ok(ts / 1000);
-            }
+            continue;
         }
 
         // Try as string and parse
         if let Ok(ts_str) = row.try_get::<String, _>(col) {
-            if let Some(ts) = parse_timestamp(&ts_str) {
-                return Ok(ts);
+            if let Some(ts) = parse_timestamp(&ts_str).and_then(ok) {
+                return Some(ts);
             }
+            continue;
         }
 
         // Try as f64 (sometimes stored as REAL)
         if let Ok(ts_f) = row.try_get::<f64, _>(col) {
-            let ts = ts_f as i64;
-            if ts > 0 && ts < 4102444800 {
-                return Ok(ts);
+            if let Some(ts) = ok(ts_f as i64) {
+                return Some(ts);
             }
         }
     }
 
-    // Default to current time if no timestamp found
-    tracing::warn!("No valid timestamp found in row, using current time");
-    Ok(chrono::Utc::now().timestamp())
+    None
 }
 
 /// Build a JSON payload from all columns in the row

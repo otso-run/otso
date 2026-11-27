@@ -62,6 +62,10 @@ pnpm dev
 
 ### Add Your Own Data
 
+The easiest way is the CLI: `pnpm otso sources` lists what it can import, and `pnpm otso auth`, `sync`, `ingest` and `index` take it from there. See [packages/otso-cli](packages/otso-cli/README.md).
+
+To add a database by hand:
+
 1. Place your SQLite database in `data/sources/your-source/chronicle/chronicle.db`
 2. Add a source configuration to `data/config/sources.toml`:
 

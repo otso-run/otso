@@ -22,6 +22,10 @@ struct Cli {
     #[arg(short, long, default_value = "data")]
     data_dir: String,
 
+    /// Directory holding each source's database (overrides defaults.data_dir in sources.toml)
+    #[arg(long)]
+    sources_dir: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -61,6 +65,15 @@ enum Commands {
     },
 }
 
+/// WAL by default; OTSO_SQLITE_JOURNAL=delete for databases on a network
+/// share (SMB/NFS), where WAL's shared-memory locking isn't reliable.
+pub(crate) fn journal_mode_pragma() -> &'static str {
+    match std::env::var("OTSO_SQLITE_JOURNAL").map(|v| v.to_lowercase()).as_deref() {
+        Ok("delete") => "PRAGMA journal_mode = DELETE",
+        _ => "PRAGMA journal_mode = WAL",
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize tracing
@@ -80,7 +93,7 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Build { source, meili_only } => {
-            run_build(&cli.data_dir, &config, source.as_deref(), meili_only).await
+            run_build(&cli.data_dir, cli.sources_dir.as_deref(), &config, source.as_deref(), meili_only).await
         }
         Commands::Stats { source } => {
             run_stats(&cli.data_dir, &config, source.as_deref()).await
@@ -96,6 +109,7 @@ async fn main() -> Result<()> {
 
 async fn run_build(
     data_dir: &str,
+    sources_dir: Option<&str>,
     config: &config::Config,
     source: Option<&str>,
     meili_only: bool,
@@ -130,10 +144,13 @@ async fn run_build(
         tracing::warn!("Recovered {} pending batches from previous run", recovered.len());
     }
 
-    // Determine source data directory from config or default
-    let source_data_dir: Arc<str> = config.defaults.data_dir.clone()
+    // Determine source data directory: CLI flag, then config, then <data_dir>/sources
+    let source_data_dir: Arc<str> = sources_dir
+        .map(str::to_string)
+        .or_else(|| config.defaults.data_dir.clone())
         .unwrap_or_else(|| format!("{}/sources", data_dir))
         .into();
+    tracing::info!("Reading source databases from {}", source_data_dir);
 
     // Process sources in parallel using JoinSet (NFR-004)
     let mut join_set: JoinSet<(String, Result<event_store::BatchStats>)> = JoinSet::new();
@@ -185,7 +202,7 @@ async fn run_build(
 
     // Update projections
     tracing::info!("Updating projections...");
-    projections::update_all(data_dir).await?;
+    projections::update_all(data_dir, &event_store).await?;
 
     Ok(())
 }

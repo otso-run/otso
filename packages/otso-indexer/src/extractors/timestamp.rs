@@ -24,6 +24,31 @@ pub fn parse_timestamp(s: &str) -> Option<i64> {
         return Some(dt.timestamp());
     }
 
+    // Chronicle-era formats with an explicit zone:
+    //   "2025-01-04 18:56:09 UTC"          (Pinboard)
+    //   "2025-11-23 23:51:44 -0500"        (Safari, Messages, Podcasts)
+    //   "2025-01-02 18:58:44.710000+00:00" (Readwise)
+    // Without these, rows fell through to "now" and showed today's date.
+    if let Some(naive) = s.strip_suffix(" UTC").or_else(|| s.strip_suffix(" GMT")) {
+        for fmt in &["%Y-%m-%d %H:%M:%S%.f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S%.f", "%Y-%m-%dT%H:%M:%S"] {
+            if let Ok(dt) = NaiveDateTime::parse_from_str(naive, fmt) {
+                return Some(Utc.from_utc_datetime(&dt).timestamp());
+            }
+        }
+    }
+    for fmt in &[
+        "%Y-%m-%d %H:%M:%S %z",
+        "%Y-%m-%d %H:%M:%S%.f %z",
+        "%Y-%m-%d %H:%M:%S%:z",
+        "%Y-%m-%d %H:%M:%S%.f%:z",
+        "%Y-%m-%dT%H:%M:%S%.f%:z",
+        "%Y-%m-%dT%H:%M:%S%:z",
+    ] {
+        if let Ok(dt) = DateTime::parse_from_str(s, fmt) {
+            return Some(dt.timestamp());
+        }
+    }
+
     // ISO 8601 variants (with time)
     for fmt in &[
         "%Y-%m-%dT%H:%M:%S%.f%:z", // With fractional seconds and timezone
@@ -186,6 +211,16 @@ mod tests {
     fn test_parse_slash_date_formats() {
         assert!(parse_timestamp("2024/01/15").is_some());
         assert!(parse_timestamp("2024/01/15 10:30:00").is_some());
+    }
+
+    #[test]
+    fn test_chronicle_zoned_formats() {
+        // 2025-01-04T18:56:09Z
+        assert_eq!(parse_timestamp("2025-01-04 18:56:09 UTC"), Some(1736016969));
+        // -0500 is five hours behind UTC
+        assert_eq!(parse_timestamp("2025-11-23 23:51:44 -0500"), Some(1763959904));
+        assert_eq!(parse_timestamp("2025-01-02 18:58:44.710000+00:00"), Some(1735844324));
+        assert_eq!(parse_timestamp("2022-06-30T15:50:02.015777+02:00"), Some(1656597002));
     }
 
     #[test]
