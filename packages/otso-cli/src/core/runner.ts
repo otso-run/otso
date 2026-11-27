@@ -7,6 +7,7 @@ import { ChronicleStore } from './chronicle.js';
 import { loadCredentials, saveCredentials, type Credentials } from './credentials.js';
 import { getSourcesDir } from './paths.js';
 import { ensureSourceBlock } from './sources-config.js';
+import { withLocalStaging } from './staging.js';
 
 /**
  * The engine shared by the CLI commands and the TUI: authenticate, sync and
@@ -22,11 +23,11 @@ export interface RunResult {
   notes: string[];
 }
 
-function openStore(dbPath: string) {
+function storePath(dbPath: string) {
   const root = resolve(getSourcesDir());
   const full = resolve(root, dbPath);
   if (!full.startsWith(root + sep)) throw new Error(`Refusing to write outside ${root}: ${dbPath}`);
-  return ChronicleStore.open(full);
+  return full;
 }
 
 function prepare(store: ChronicleStore, connector: Connector) {
@@ -65,27 +66,30 @@ export async function runSync(id: string, opts: { full?: boolean; log?: Log } = 
     if (!saved) throw new Error(`Not connected to ${connector.displayName} yet. Run: otso auth ${id}`);
     credentials = saved;
   }
-  const dbFile = join(getSourcesDir(), connector.dbPath);
-  const existed = existsSync(dbFile);
-  const store = openStore(connector.dbPath);
-  let ok = false;
-  try {
-    prepare(store, connector);
-    const stats = await connector.sync({
-      store,
-      credentials,
-      full: !!opts.full,
-      log,
-      sourceDir: join(getSourcesDir(), connector.dbPath.split('/')[0]),
-    });
-    recordRun(store, 'sync', stats);
-    ok = true;
-    return { source: id, dbPath: connector.dbPath, stats, notes: [] };
-  } finally {
-    store.close();
-    // Don't leave an empty database behind when the very first sync fails.
-    if (!ok && !existed) for (const f of [dbFile, `${dbFile}-wal`, `${dbFile}-shm`]) rmSync(f, { force: true });
-  }
+  const dbFile = storePath(connector.dbPath);
+  // On a network share, sync into a local copy and move the result over at the end.
+  return withLocalStaging(dbFile, async (path) => {
+    const existed = existsSync(path);
+    const store = ChronicleStore.open(path);
+    let ok = false;
+    try {
+      prepare(store, connector);
+      const stats = await connector.sync!({
+        store,
+        credentials,
+        full: !!opts.full,
+        log,
+        sourceDir: join(getSourcesDir(), connector.dbPath.split('/')[0]),
+      });
+      recordRun(store, 'sync', stats);
+      ok = true;
+      return { source: id, dbPath: connector.dbPath, stats, notes: [] };
+    } finally {
+      store.close();
+      // Don't leave an empty database behind when the very first sync fails.
+      if (!ok && !existed) for (const f of [path, `${path}-wal`, `${path}-shm`]) rmSync(f, { force: true });
+    }
+  });
 }
 
 export async function runIngest(id: string, inputs: string[], opts: { log?: Log } = {}): Promise<RunResult[]> {
@@ -111,17 +115,20 @@ export async function runIngest(id: string, inputs: string[], opts: { log?: Log 
         }
       }
       const sourceDir = join(getSourcesDir(), dbPath.split('/')[0]);
-      const store = openStore(dbPath);
-      try {
-        prepare(store, connector);
-        const stats = await connector.ingest({ store, credentials: {}, full: false, log, sourceDir }, archive);
-        recordRun(store, 'ingest', stats);
-        const kept = await keepExportCopy(input, sourceDir);
-        if (kept) notes.push(`Kept a copy of the export in ${kept}`);
-        results.push({ source: sourceName, dbPath, stats, notes });
-      } finally {
-        store.close();
-      }
+      const stats = await withLocalStaging(storePath(dbPath), async (path) => {
+        const store = ChronicleStore.open(path);
+        try {
+          prepare(store, connector);
+          const s = await connector.ingest!({ store, credentials: {}, full: false, log, sourceDir }, archive);
+          recordRun(store, 'ingest', s);
+          return s;
+        } finally {
+          store.close();
+        }
+      });
+      const kept = await keepExportCopy(input, sourceDir);
+      if (kept) notes.push(`Kept a copy of the export in ${kept}`);
+      results.push({ source: sourceName, dbPath, stats, notes });
     } finally {
       await archive.dispose();
     }

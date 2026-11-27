@@ -95,11 +95,18 @@ fn row_to_event(
     default_visibility: Option<&str>,
 ) -> Result<Event> {
     // Extract required fields
-    let source_id: String = row
-        .try_get("external_id")
-        .or_else(|_| row.try_get("source_id"))
-        .or_else(|_| row.try_get("id"))
-        .unwrap_or_else(|_| Uuid::new_v4().to_string());
+    // Integer ids (e.g. `rowid as external_id`) must be read as integers;
+    // reading them as text fails and used to fall through to a random UUID,
+    // which re-inserted every such row on every build.
+    let id_column = |name: &str| -> Option<String> {
+        row.try_get::<String, _>(name)
+            .ok()
+            .or_else(|| row.try_get::<i64, _>(name).ok().map(|n| n.to_string()))
+    };
+    let source_id: String = id_column("external_id")
+        .or_else(|| id_column("source_id"))
+        .or_else(|| id_column("id"))
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
 
     // Parse timestamp from various possible column names
     let occurred_at = extract_timestamp(row)?;

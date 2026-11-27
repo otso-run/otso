@@ -202,7 +202,7 @@ async fn run_build(
 
     // Update projections
     tracing::info!("Updating projections...");
-    projections::update_all(data_dir).await?;
+    projections::update_all(data_dir, &event_store).await?;
 
     Ok(())
 }

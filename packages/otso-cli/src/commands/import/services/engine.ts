@@ -41,8 +41,6 @@ const plain = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
 export async function buildIndex(): Promise<string> {
   const build = await runIndexer(['build'], { stdio: 'pipe' });
   if (build.exitCode !== 0) throw new Error(plain(build.output).split('\n').filter(Boolean).slice(-3).join('\n'));
-  const rebuild = await runIndexer(['rebuild', '--fts5-only'], { stdio: 'pipe' });
-  if (rebuild.exitCode !== 0) throw new Error(plain(rebuild.output).split('\n').filter(Boolean).slice(-3).join('\n'));
-  const line = plain(rebuild.output).split('\n').find((l) => l.includes('FTS5:')) ?? '';
-  return line.replace(/^.*FTS5:/, 'Search index rebuilt:').trim() || 'Search index rebuilt';
+  const line = plain(build.output).split('\n').find((l) => l.includes('entries added')) ?? '';
+  return line.replace(/^.*FTS5:/, 'Search index updated:').trim() || 'Search index updated';
 }

@@ -150,14 +150,12 @@ export async function indexCommand(opts: { source?: string; fixtures?: boolean; 
     );
   }
   try {
-    // build appends new events to data/otso/events.db (skipping ones already
-    // there); rebuild then regenerates the search.db projection otso-search reads.
+    // build appends new events to events.db (skipping ones already there) and
+    // adds just those to the search.db projection otso-search reads.
     const build = await runIndexer(['build', ...(opts.source ? ['--source', opts.source] : [])], {
       fixtures: opts.fixtures,
     });
     if (build.exitCode !== 0) fail(`otso-indexer build exited with ${build.exitCode}`);
-    const rebuild = await runIndexer(['rebuild', '--fts5-only'], { fixtures: opts.fixtures });
-    if (rebuild.exitCode !== 0) fail(`otso-indexer rebuild exited with ${rebuild.exitCode}`);
     console.log(`\n✓ Search index updated: ${displayPath(getDataRoot())}/otso/search.db`);
   } catch (err) {
     fail(err);

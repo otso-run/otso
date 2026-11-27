@@ -53,7 +53,7 @@ Each `chronicle.db` has the tables the `sources.toml` queries read, plus an `_ot
 
 ## Indexing
 
-`otso index` runs `packages/otso-indexer` with `--sources-dir data/sources`, so it reads the real data even though `sources.toml` defaults to `data/fixtures`. It appends new events to `data/otso/events.db`, then rebuilds `search.db` for otso-search. `otso index --fixtures` indexes the mock data instead. Build the indexer once with `cargo build --release` in `packages/otso-indexer`; without that build it falls back to `cargo run`.
+`otso index` runs `packages/otso-indexer` with `--sources-dir data/sources`, so it reads the real data even though `sources.toml` defaults to `data/fixtures`. It appends new events to `data/otso/events.db` and adds only those to `search.db`, the index otso-search reads, so a routine run takes seconds. `otso index --fresh` starts both over (needed only after ids change, e.g. after `otso adopt`). `otso index --fixtures` indexes the mock data instead. Build the indexer once with `cargo build --release` in `packages/otso-indexer`; without that build it falls back to `cargo run`.
 
 ## Running on a schedule
 
