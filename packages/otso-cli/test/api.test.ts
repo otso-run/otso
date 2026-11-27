@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { Database } from 'bun:sqlite';
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadCredentials } from '../src/core/credentials.js';
@@ -34,6 +35,8 @@ describe('are.na', () => {
   test('fetches channels and blocks; skips unchanged channels next time', async () => {
     const { sources } = sandbox();
     let updatedAt = '2024-01-01T00:00:00Z';
+    // Blocks you authored, as /users/:id/contents lists them (no channel info).
+    let own: any[] = [];
     const page = (u: URL, items: any[]) =>
       u.searchParams.get('page') === '1' ? { data: items, meta: { has_more_pages: false } } : { data: [], meta: { has_more_pages: false } };
     const calls = mockFetch([
@@ -41,16 +44,19 @@ describe('are.na', () => {
       {
         match: /\/v3\/users\/7\/contents/,
         respond: (u) => ({
-          body: page(u, [
-            { id: 1, type: 'Channel', title: 'Refs', slug: 'refs', created_at: '2023-01-01T00:00:00Z', updated_at: updatedAt, description: { markdown: 'd' } },
-          ]),
+          body: page(
+            u,
+            u.searchParams.get('type') === 'Channel'
+              ? [{ id: 1, type: 'Channel', title: 'Refs', slug: 'refs', created_at: '2023-01-01T00:00:00Z', updated_at: updatedAt, description: { markdown: 'd' } }]
+              : own
+          ),
         }),
       },
       {
         match: /\/v3\/channels\/1\/contents/,
         respond: (u) => ({
           body: page(u, [
-            { id: 10, base_type: 'Block', type: 'Link', title: 'A link', description: { markdown: 'about' }, created_at: '2023-02-01T00:00:00Z', source: { url: 'https://a.example' }, connection: { connected_at: '2023-02-01T00:00:00Z' } },
+            { id: 10, base_type: 'Block', type: 'Link', title: 'A link', description: { markdown: 'about' }, created_at: '2023-02-01T00:00:00Z', updated_at: '2023-02-01T00:00:00Z', source: { url: 'https://a.example' }, connection: { connected_at: '2023-02-01T00:00:00Z' } },
             { id: 11, base_type: 'Block', type: 'Text', title: 'Note', content: { markdown: 'text body' }, created_at: '2023-02-02T00:00:00Z' },
             { id: 12, type: 'Channel', title: 'Nested' },
           ]),
@@ -74,6 +80,24 @@ describe('are.na', () => {
     updatedAt = '2024-02-01T00:00:00Z';
     const third = await runSync('arena');
     expect(third.stats.blocks).toEqual({ inserted: 0, updated: 2 });
+
+    // Editing a block leaves the channel's updated_at alone; the own-blocks
+    // pass still picks the edit up, and keeps the block's channel.
+    own = [
+      { id: 10, base_type: 'Block', type: 'Link', title: 'Renamed link', description: { markdown: 'about' }, created_at: '2023-02-01T00:00:00Z', updated_at: '2024-03-01T00:00:00Z', source: { url: 'https://a.example' } },
+      { id: 20, base_type: 'Block', type: 'Text', title: 'In a friend\'s channel', content: { markdown: 'elsewhere' }, created_at: '2024-03-02T00:00:00Z', updated_at: '2024-03-02T00:00:00Z' },
+    ];
+    calls.length = 0;
+    const fourth = await runSync('arena');
+    expect(calls.some((c) => c.includes('/channels/1/contents'))).toBe(false);
+    expect(fourth.stats.blocks).toEqual({ inserted: 1, updated: 1 });
+    const db = new Database(join(sources, 'arena/chronicle/chronicle.db'), { readonly: true });
+    expect(db.query("SELECT title, channel_slug FROM blocks WHERE id = 'block-10'").get()).toEqual({ title: 'Renamed link', channel_slug: 'refs' });
+    db.close();
+
+    // Nothing moved: nothing rewritten.
+    const fifth = await runSync('arena');
+    expect(fifth.stats.blocks).toEqual({ inserted: 0, updated: 0 });
   });
 });
 
