@@ -172,15 +172,30 @@
     dragEnd = null;
   }
 
+  // Browsers replay a tap as mouse events; ignore those so a tap is not handled twice
+  let lastTouchAt = 0;
+
   function handleMouseDown(e: MouseEvent) {
+    if (Date.now() - lastTouchAt < 800) return;
     startDrag(e.clientX);
   }
 
   function handleTouchStart(e: TouchEvent) {
+    lastTouchAt = Date.now();
     if (e.touches.length === 1) {
       startDrag(e.touches[0].clientX);
     }
   }
+
+  // Range being dragged, shown live since touch has no hover tooltip
+  let dragLabel = $derived.by(() => {
+    if (!isDragging || !dragStart || !dragEnd) return null;
+    const start = dragStart < dragEnd ? dragStart : dragEnd;
+    const end = dragStart < dragEnd ? dragEnd : dragStart;
+    return start === end
+      ? formatMonthLabel(start)
+      : `${formatMonthLabel(start)} → ${formatMonthLabel(end)}`;
+  });
 
   $effect(() => {
     if (!isDragging) return;
@@ -193,7 +208,10 @@
         moveDrag(e.touches[0].clientX);
       }
     };
-    const onTouchEnd = () => endDrag();
+    const onTouchEnd = () => {
+      lastTouchAt = Date.now();
+      endDrag();
+    };
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
@@ -396,7 +414,9 @@
 
   {#if expanded && histogramData.months.length > 0}
     <div class="chart-area">
-      <div class="hint">drag to select time range</div>
+      <div class="hint" class:dragging={dragLabel !== null}>
+        {dragLabel ?? 'drag to select time range'}
+      </div>
 
       <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
@@ -440,7 +460,7 @@
         </svg>
       </div>
 
-      <div class="year-labels">
+      <div class="year-labels" class:dense={yearLabels.length > 8}>
         {#each yearLabels as label}
           <div class="year-label" style:left="{label.position}%">
             {label.text}
@@ -568,5 +588,64 @@
     white-space: nowrap;
     pointer-events: none;
     z-index: 10;
+  }
+
+  .hint.dragging {
+    color: #4ECDC4;
+  }
+
+  /* Phones: a taller tap target and a chart big enough to drag on */
+  @media (max-width: 720px), (max-width: 950px) and (pointer: coarse) {
+    .header {
+      box-sizing: border-box;
+      min-height: 44px;
+      padding: 8px max(14px, env(safe-area-inset-right)) 8px max(14px, env(safe-area-inset-left));
+      justify-content: space-between;
+    }
+
+    .toggle,
+    .date-range {
+      position: relative;
+      font-size: 12px;
+      color: #8a8a8a;
+      white-space: nowrap;
+    }
+
+    /* Per-source counts do not fit; the Sources sheet has them */
+    .source-counts {
+      display: none;
+    }
+
+    .date-range.active {
+      min-height: 32px;
+      padding: 0 10px;
+      border-radius: 16px;
+    }
+
+    .chart-area {
+      padding: 12px max(14px, env(safe-area-inset-right)) 8px max(14px, env(safe-area-inset-left));
+    }
+
+    .hint {
+      font-size: 12px;
+      color: #8a8a8a;
+    }
+
+    .chart {
+      height: 120px;
+    }
+
+    .tooltip {
+      display: none;
+    }
+
+    .year-labels {
+      height: 18px;
+      font-size: 10px;
+    }
+
+    .year-labels.dense .year-label:nth-child(even) {
+      display: none;
+    }
   }
 </style>
