@@ -6,6 +6,16 @@ node_modules/
 dist/
 build/
 .output/
+target/
+.svelte-kit/
+
+# Test output
+playwright-report/
+test-results/
+
+# Local agent/tool state
+*.local.md
+.claude/*.local.*
 
 # Environment variables
 .env
@@ -95,8 +105,10 @@ temp/
 
 # Otso Data Protection
 # Real user data (contains PII) - NEVER commit
-data/sources/
-data/otso/
+**/data/sources/
+**/data/otso/
+# API tokens (the CLI now stores these in ~/.otso/config)
+*-credentials.json
 
 # Meilisearch data
 data/meilisearch/

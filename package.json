@@ -15,5 +15,5 @@
     "husky": "^9.1.7",
     "typescript": "^5.0.0"
   },
-  "packageManager": "pnpm@10.16.1"
+  "packageManager": "pnpm@12.23.0"
 }
