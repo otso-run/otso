@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { useKeyboard, useTerminalDimensions } from '@opentui/react';
-import { writeFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
 import { execa } from 'execa';
 import type { SourceMeta, SourceProgress } from '../../../../types/index.js';
+import { saveCredentials, displayCredentialsPath } from '../../services/credentials.js';
 
 interface APIFlowProps {
   source: SourceMeta;
@@ -131,17 +130,11 @@ export function APIFlow({
     onProgressUpdate({ status: 'in_progress', startedAt: new Date().toISOString() });
 
     try {
-      // Create config directory
-      const configDir = join(process.cwd(), 'data', 'config');
-      await mkdir(configDir, { recursive: true });
-
-      // Save token to a credentials file
-      const credPath = join(configDir, `${source.name}-credentials.json`);
-      await writeFile(credPath, JSON.stringify({
+      const credPath = await saveCredentials(`${source.name}-credentials.json`, {
         source: source.name,
         token: tokenInput,
         createdAt: new Date().toISOString(),
-      }, null, 2));
+      });
 
       onProgressUpdate({
         status: 'completed',
@@ -275,7 +268,7 @@ export function APIFlow({
             <text fg="#00D4AA">Credentials saved!</text>
             <box height={1} />
             <text fg="#FFFFFF">
-              Token saved to: data/config/{source.name}-credentials.json
+              Token saved to: {displayCredentialsPath(`${source.name}-credentials.json`)}
             </text>
             <box height={1} />
             <text fg="#666666">

@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useKeyboard, useTerminalDimensions, useAppContext } from '@opentui/react';
-import { writeFile, mkdir, copyFile } from 'node:fs/promises';
+import { mkdir, copyFile } from 'node:fs/promises';
 import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { execa } from 'execa';
 import type { SourceProgress } from '../../../../types/index.js';
 import type { SourcePlugin, PluginStep, FormField } from '../../plugins/types.js';
 import { detectSource, checkPermissions } from '../../services/source-detector.js';
+import { saveCredentials as writeCredentialsFile, displayCredentialsPath } from '../../services/credentials.js';
 
 interface PluginFlowProps {
   plugin: SourcePlugin;
@@ -207,22 +208,13 @@ export function PluginFlow({
         }
       }
 
-      // Save to config
-      const configDir = join(process.cwd(), 'data', 'config');
-      await mkdir(configDir, { recursive: true });
-
-      const credPath = join(configDir, plugin.credentialsFile || `${plugin.id}-credentials.json`);
-      await writeFile(
-        credPath,
-        JSON.stringify(
-          {
-            source: plugin.id,
-            ...formData,
-            createdAt: new Date().toISOString(),
-          },
-          null,
-          2
-        )
+      const credPath = await writeCredentialsFile(
+        plugin.credentialsFile || `${plugin.id}-credentials.json`,
+        {
+          source: plugin.id,
+          ...formData,
+          createdAt: new Date().toISOString(),
+        }
       );
 
       onProgressUpdate({
@@ -613,7 +605,7 @@ export function PluginFlow({
             <box height={1} />
             <text fg="#FFFFFF">
               {plugin.extractionType === 'api'
-                ? `Credentials saved to: data/config/${plugin.credentialsFile || plugin.id + '-credentials.json'}`
+                ? `Credentials saved to: ${displayCredentialsPath(plugin.credentialsFile || `${plugin.id}-credentials.json`)}`
                 : `Data copied to: data/sources/${plugin.id}/`}
             </text>
             <box height={2} />

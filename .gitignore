@@ -107,6 +107,8 @@ temp/
 # Real user data (contains PII) - NEVER commit
 **/data/sources/
 **/data/otso/
+# API tokens (the CLI now stores these in ~/.otso/config)
+*-credentials.json
 
 # Meilisearch data
 data/meilisearch/
