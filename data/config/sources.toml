@@ -424,8 +424,71 @@ SELECT
     COALESCE(name, 'Untitled') as title,
     COALESCE(summary, '') as content,
     created_at as occurred_at,
-    NULL as url
+    'https://claude.ai/chat/' || uuid as url
 FROM conversations
+"""
+
+[[sources.queries]]
+table = "projects"
+entry_type = "project"
+action_type = "CreateAction"
+object_type = "Project"
+sql = """
+SELECT
+    'project:' || uuid as external_id,
+    COALESCE(name, 'Untitled project') as title,
+    TRIM(COALESCE(description, '') || ' ' || COALESCE(prompt_template, '')) as content,
+    created_at as occurred_at,
+    'https://claude.ai/project/' || uuid as url
+FROM projects
+"""
+
+[[sources.queries]]
+table = "project_docs"
+entry_type = "document"
+action_type = "CreateAction"
+object_type = "DigitalDocument"
+sql = """
+SELECT
+    'project-doc:' || d.uuid as external_id,
+    COALESCE(d.filename, 'Untitled document') || ' (' || COALESCE(d.project_name, p.name, 'project') || ')' as title,
+    COALESCE(d.content, '') as content,
+    d.created_at as occurred_at,
+    'https://claude.ai/project/' || d.project_uuid as url
+FROM project_docs d LEFT JOIN projects p ON p.uuid = d.project_uuid
+"""
+
+# Claude's memory has no dates of its own; it is dated by the export it came from.
+[[sources.queries]]
+table = "memories"
+entry_type = "memory"
+action_type = "UpdateAction"
+object_type = "Note"
+sql = """
+SELECT
+    'memory:' || m.id as external_id,
+    CASE WHEN m.scope = 'project'
+        THEN 'Claude memory: ' || COALESCE(m.project_name, p.name, 'project')
+        ELSE 'Claude memory' END as title,
+    COALESCE(m.content, '') as content,
+    m.exported_at as occurred_at,
+    CASE WHEN m.project_uuid IS NOT NULL THEN 'https://claude.ai/project/' || m.project_uuid END as url
+FROM memories m LEFT JOIN projects p ON p.uuid = m.project_uuid
+"""
+
+[[sources.queries]]
+table = "design_chats"
+entry_type = "conversation"
+action_type = "CommunicateAction"
+object_type = "Conversation"
+sql = """
+SELECT
+    'design:' || uuid as external_id,
+    COALESCE(title, 'Untitled design') as title,
+    COALESCE(summary, '') as content,
+    created_at as occurred_at,
+    NULL as url
+FROM design_chats
 """
 
 # ============================================================================

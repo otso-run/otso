@@ -72,7 +72,76 @@ describe('export connectors produce rows the sources.toml queries can read', () 
     await ingestTwice('claude', dir);
     const rows = runTomlQueries('claude', sources);
     expectIndexable(rows);
-    expect(rows[0]).toMatchObject({ title: 'Planning', content: 'Help me plan a trip' });
+    expect(rows[0]).toMatchObject({ title: 'Planning', content: 'Help me plan a trip', url: 'https://claude.ai/chat/c1' });
+  });
+
+  test('claude split export: one zip per category, in any order', async () => {
+    const { sources } = sandbox();
+    const zipOf = (name: string, files: Record<string, string>) => {
+      const zip = join(tmp(), name);
+      execFileSync('zip', ['-qr', zip, '.'], { cwd: writeFiles(tmp(), files) });
+      return zip;
+    };
+    const folder = tmp();
+    const parts = {
+      'memories-000.zip': {
+        'memories.json': JSON.stringify([
+          { conversations_memory: 'Likes long walks.', project_memories: { p1: 'Garden is zone 6b.' }, account_uuid: 'a1' },
+        ]),
+      },
+      'projects-000.zip': {
+        'projects/p1.json': JSON.stringify({
+          uuid: 'p1',
+          name: 'Garden',
+          description: 'Planting notes',
+          prompt_template: '',
+          is_private: true,
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-02-01T00:00:00Z',
+          docs: [{ uuid: 'd1', filename: 'beds.md', content: 'Tomatoes by the fence', created_at: '2024-01-02T00:00:00Z' }],
+        }),
+      },
+      'design_chats-000.zip': {
+        'design_chats/x1.json': JSON.stringify({
+          uuid: 'x1',
+          title: 'Logo',
+          project: { uuid: 'dp1', name: 'Brand' },
+          created_at: '2024-04-01T00:00:00Z',
+          updated_at: '2024-04-01T00:00:00Z',
+          messages: [
+            { uuid: 'm1', role: 'user', content: { role: 'user', content: 'Draw a bear' }, created_at: '2024-04-01T00:00:00Z' },
+            { uuid: 'm2', role: 'assistant', content: { role: 'assistant', content: 'Here it is' }, created_at: '2024-04-01T00:00:01Z' },
+          ],
+        }),
+      },
+      'conversations-000.zip': {
+        'conversations.json': JSON.stringify([
+          { uuid: 'c9', name: 'Hello', summary: 'A greeting', created_at: '2024-05-01T00:00:00Z', chat_messages: [] },
+        ]),
+      },
+      'feedback-000.zip': { 'feedback.json': '[]' },
+    };
+    for (const [name, files] of Object.entries(parts)) {
+      execFileSync('cp', [zipOf(name, files), join(folder, name)]);
+    }
+
+    const { first } = await ingestTwice('claude', folder);
+    expect(first.stats.projects.inserted).toBe(1);
+    expect(first.stats.project_docs.inserted).toBe(1);
+    expect(first.stats.memories.inserted).toBe(2);
+    expect(first.stats.design_chats.inserted).toBe(1);
+    expect(first.stats.conversations.inserted).toBe(1);
+
+    const rows = runTomlQueries('claude', sources);
+    expectIndexable(rows);
+    const byId = Object.fromEntries(rows.map((r: any) => [r.external_id, r]));
+    expect(byId['c9'].title).toBe('Hello');
+    expect(byId['project:p1']).toMatchObject({ title: 'Garden', content: 'Planting notes' });
+    expect(byId['project-doc:d1']).toMatchObject({ title: 'beds.md (Garden)', content: 'Tomatoes by the fence' });
+    // The memories zip sorts before projects, yet the project name resolves.
+    expect(byId['memory:a1:project:p1'].title).toBe('Claude memory: Garden');
+    expect(byId['memory:a1:conversations'].content).toBe('Likes long walks.');
+    expect(byId['design:x1']).toMatchObject({ title: 'Logo', content: 'Draw a bear' });
   });
 
   test('pinboard JSON export', async () => {
