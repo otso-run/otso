@@ -14,6 +14,7 @@ All notable changes to Otso are recorded here. The format is based on
 - A Coverage page in Otso Search (`/coverage`) lines up every source on one time axis, so you can see where each archive starts, where it has gaps and which sources have gone quiet. Choose the smallest gap worth flagging, drag to zoom, and open a source's longest gaps or jump to it in search. It works on phones too. [#41](https://github.com/otso-run/otso/pull/41)
 - The Coverage page groups sources by the same categories as search, so all browsers or all music services share one lane that only shows a gap when none of them had anything. Select a group to see its sources, or turn grouping off with **by category**. [#43](https://github.com/otso-run/otso/pull/43)
 - `otso log` shows recent sync and index runs, then the sources that are failing or slow, with how long each spent copying, reading and writing and any query slower than a second. Every `otso sync` and `otso index` now records a line in `~/.otso/logs/runs.jsonl` with each source's time, counts and errors, never the data itself. [#39](https://github.com/otso-run/otso/pull/39)
+- `otso sync spotify` keeps your listening history going after the export: it picks up recently played tracks (Spotify keeps only the last 50, so schedule it), keyed so a later export lines up instead of doubling. Sign in with `otso auth spotify`, or bring over a Chronicle setup with `otso migrate chronicle`. [#57](https://github.com/otso-run/otso/pull/57)
 
 ### Changed
 
