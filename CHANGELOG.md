@@ -11,6 +11,8 @@ All notable changes to Otso are recorded here. The format is based on
 - Readwise Reader documents keep their full article text, and search finds words from the body, not just the title and summary. Results also show the author, site, published date, reading time, tags, notes, reading progress and when you saved and last opened each one. The first sync after upgrading fetches every Reader document once to fill this in. [#38](https://github.com/otso-run/otso/pull/38)
 - A Coverage page in Otso Search (`/coverage`) lines up every source on one time axis, so you can see where each archive starts, where it has gaps and which sources have gone quiet. Choose the smallest gap worth flagging, drag to zoom, and open a source's longest gaps or jump to it in search. It works on phones too. [#41](https://github.com/otso-run/otso/pull/41)
 
+- `otso sync apple-calendar` brings in events from every account Calendar.app shows (iCloud, Google, Exchange, subscriptions), which also covers Fantastical. Each sync adds the past occurrences of repeating events that Calendar can still see and keeps the older ones it stored, and removes events you deleted. A second Mac syncing the same calendars adds nothing new. Needs Full Disk Access. [#45](https://github.com/otso-run/otso/pull/45)
+
 ### Changed
 
 - `otso index` picks up edited rows. When a source row changes, or a `sources.toml` query starts selecting more, its search entry is replaced on the next build, so `otso index --fresh` is no longer needed after changing a query. Queries can also return a `metadata` JSON column that shows in the result detail. [#38](https://github.com/otso-run/otso/pull/38)
