@@ -25,5 +25,12 @@
 - Stick to Conventional Commits (`feat: ...`, `refactor: ...`, `feat(apple): ...`) as seen in the git log; write subjects in the imperative tense.
 - PRs should outline the change, reference specs or issues, and list manual verification. Include screenshots or clips for UI differences and mention any new commands or environment variables.
 
+## Changelog
+- Every PR that changes behavior, commands, configuration or docs adds an entry to `CHANGELOG.md` under `## [Unreleased]`, in the same PR. Skip it only for changes nobody would notice (typo fixes, test-only or CI-only changes).
+- Follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/): file each entry under `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed` or `Security`, creating the heading if it isn't there yet, in that order.
+- Write each entry as one or a few plain sentences about what someone using Otso will notice, not how the code changed. Name the command, flag or source, and give real numbers when they help. End the entry with a link to the PR, e.g. `[#36](https://github.com/otso-run/otso/pull/36)`; open the PR first if you need its number, then add the entry.
+- Keep personal data out: no usernames, hostnames, home-folder or share paths, account names, or counts from someone's own archive. Say "a second Mac" or "a network share", not the actual machine or volume.
+- When a release is cut, rename `[Unreleased]` to `[x.y.z] - YYYY-MM-DD`, start a fresh empty `[Unreleased]`, and update the compare links at the bottom of the file.
+
 ## Configuration & Deployment Notes
 - Vercel reads `vercel.json`; run `pnpm build` locally before requesting a deploy. Keep secrets out of the repo (local `.env`, Xcode build settings) and update `ai/` prompts whenever workflows change so other agents can reproduce them.
