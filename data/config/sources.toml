@@ -360,6 +360,75 @@ SELECT
 FROM events
 """
 
+# Google Chrome (Chromium). Template only: otso index enables a copy per Mac as google-chrome-<device>.
+[[sources]]
+name = "google-chrome"
+enabled = false
+per_device = true
+db_path = "google-chrome/chronicle/chronicle.db"
+category = "browse"
+
+[[sources.queries]]
+table = "events"
+entry_type = "visit"
+action_type = "ViewAction"
+object_type = "WebPage"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.name') as title,
+    COALESCE(json_extract(object, '$.url'), '') as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+"""
+
+# Arc (Chromium). Template only: otso index enables a copy per Mac as arc-<device>.
+[[sources]]
+name = "arc"
+enabled = false
+per_device = true
+db_path = "arc/chronicle/chronicle.db"
+category = "browse"
+
+[[sources.queries]]
+table = "events"
+entry_type = "visit"
+action_type = "ViewAction"
+object_type = "WebPage"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.name') as title,
+    COALESCE(json_extract(object, '$.url'), '') as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+"""
+
+# Dia (Chromium). Template only: otso index enables a copy per Mac as dia-<device>.
+[[sources]]
+name = "dia"
+enabled = false
+per_device = true
+db_path = "dia/chronicle/chronicle.db"
+category = "browse"
+
+[[sources.queries]]
+table = "events"
+entry_type = "visit"
+action_type = "ViewAction"
+object_type = "WebPage"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.name') as title,
+    COALESCE(json_extract(object, '$.url'), '') as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+"""
+
 # ============================================================================
 # NOTES & DOCUMENTS
 # ============================================================================

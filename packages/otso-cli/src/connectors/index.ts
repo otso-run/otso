@@ -15,6 +15,8 @@ import { appleCalendar } from './calendar.js';
 import { gmail } from './gmail.js';
 import { safari, helium, imessage, appleNotes, applePhotos, applePodcasts, things, timing } from './local.js';
 
+import { googleChrome, arc, dia } from './browsers.js';
+
 export type { Connector } from './types.js';
 
 export const CONNECTORS: Connector[] = [
@@ -36,6 +38,9 @@ export const CONNECTORS: Connector[] = [
   // Local macOS databases
   safari,
   helium,
+  googleChrome,
+  arc,
+  dia,
   imessage,
   appleNotes,
   applePhotos,
