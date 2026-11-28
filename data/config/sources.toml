@@ -251,6 +251,43 @@ SELECT
 FROM events WHERE actionStatus = 'completed' AND endTime IS NOT NULL
 """
 
+# OmniFocus, shaped like Things: one entry when made, one when completed.
+[[sources]]
+name = "omnifocus"
+enabled = true
+db_path = "omnifocus/chronicle/chronicle.db"
+category = "productivity"
+
+[[sources.queries]]
+table = "events"
+entry_type = "task"
+action_type = "CreateAction"
+object_type = "Action"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    TRIM(COALESCE(description, '') || ' ' || COALESCE(json_extract(result, '$.name'), '') || ' ' || COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.keywords')) k), '')) as content,
+    startTime as occurred_at,
+    NULL as url
+FROM events WHERE startTime IS NOT NULL
+"""
+
+[[sources.queries]]
+table = "events"
+entry_type = "task-completed"
+action_type = "CompleteAction"
+object_type = "Action"
+sql = """
+SELECT
+    source_id || '-completed' as external_id,
+    '✓ ' || name as title,
+    TRIM(COALESCE(description, '') || ' ' || COALESCE(json_extract(result, '$.name'), '') || ' ' || COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.keywords')) k), '')) as content,
+    endTime as occurred_at,
+    NULL as url
+FROM events WHERE actionStatus = 'completed' AND endTime IS NOT NULL
+"""
+
 [[sources]]
 name = "timing"
 enabled = true
