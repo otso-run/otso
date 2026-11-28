@@ -21,8 +21,7 @@ impl Fts5Projection {
             std::fs::create_dir_all(parent)?;
         }
 
-        let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
-        let pool = SqlitePool::connect(&db_url).await?;
+        let pool = SqlitePool::connect_with(crate::db::read_write(&db_path)).await?;
 
         // Initialize schema
         init_schema(&pool).await?;
@@ -80,9 +79,10 @@ impl Fts5Projection {
                 .into_iter()
                 .collect();
 
-        let events = event_store.stream_projectable().await?;
+        // Compare ids first, and read whole events (payloads) only for the
+        // ones that aren't indexed yet: a routine run then reads almost none.
         let current: std::collections::HashSet<String> =
-            events.iter().map(|e| e.event_id.to_string()).collect();
+            event_store.projectable_ids().await?.into_iter().collect();
         let stale: Vec<&String> = indexed.iter().filter(|id| !current.contains(*id)).collect();
         if !stale.is_empty() {
             stats.entries_removed = self.remove_entries(&stale).await?;
@@ -91,6 +91,13 @@ impl Fts5Projection {
         let max_id: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(rowid), 0) FROM search_entry_map")
             .fetch_one(&self.pool)
             .await?;
+        let missing: Vec<&String> = current.iter().filter(|id| !indexed.contains(*id)).collect();
+        let events = if indexed.is_empty() {
+            // A new index: one ordered scan beats looking up every id.
+            event_store.stream_projectable().await?
+        } else {
+            event_store.projectable_by_ids(&missing).await?
+        };
         let new: Vec<_> = events
             .iter()
             .filter(|e| !indexed.contains(&e.event_id.to_string()))
@@ -99,7 +106,7 @@ impl Fts5Projection {
             "FTS5: {} new and {} removed of {} events",
             new.len(),
             stale.len(),
-            events.len()
+            current.len()
         );
 
         stats.entries_added = self.insert_events(new.into_iter(), max_id).await?;
@@ -384,6 +391,31 @@ mod tests {
             .fetch_one(&fts.pool)
             .await
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn update_after_append_many_adds_and_replaces_by_id() {
+        let dir = TempDir::new().unwrap();
+        let data = dir.path().to_str().unwrap();
+        let store = SqliteEventStore::open(data).await.unwrap();
+        let fts = Fts5Projection::open(data).await.unwrap();
+
+        let tx = store.begin_batch("readwise").await.unwrap();
+        store.append_many(&tx, &[article("only a summary")]).await.unwrap();
+        store.commit(tx).await.unwrap();
+        let s = fts.update(&store).await.unwrap();
+        assert_eq!((s.entries_added, s.entries_removed), (1, 0));
+
+        // An edit reaches an existing index through the id lookup path.
+        let tx = store.begin_batch("readwise").await.unwrap();
+        store.append_many(&tx, &[article("now with caching")]).await.unwrap();
+        store.commit(tx).await.unwrap();
+        let s = fts.update(&store).await.unwrap();
+        assert_eq!((s.entries_added, s.entries_removed), (1, 1));
+        assert_eq!(matches(&fts, "caching").await, 1);
+
+        let s = fts.update(&store).await.unwrap();
+        assert_eq!((s.entries_added, s.entries_removed), (0, 0));
     }
 
     #[tokio::test]

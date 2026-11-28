@@ -1226,6 +1226,7 @@ dependencies = [
  "chrono",
  "clap",
  "futures",
+ "log",
  "meilisearch-sdk",
  "serde",
  "serde_json",
