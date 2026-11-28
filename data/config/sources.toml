@@ -35,6 +35,59 @@ SELECT
 FROM events WHERE type = 'BookmarkAction'
 """
 
+# Zotero library: saved items with their creators, abstract, tags, collections, notes and annotations.
+[[sources]]
+name = "zotero"
+enabled = true
+db_path = "zotero/chronicle/chronicle.db"
+category = "reading"
+
+[[sources.queries]]
+table = "events"
+entry_type = "save"
+action_type = "BookmarkAction"
+object_type = "CreativeWork"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    TRIM(
+      COALESCE((SELECT group_concat(c.value, ', ') FROM json_each(json_extract(object, '$.creators')) c), '') || char(10) ||
+      COALESCE(json_extract(object, '$.publication'), '') || ' ' || COALESCE(json_extract(object, '$.date'), '') || char(10) ||
+      COALESCE(description, '') || char(10) || COALESCE(text, '') || char(10) ||
+      COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.keywords')) k), '') || ' ' ||
+      COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.collections')) k), '')
+    ) as content,
+    date_created as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+"""
+
+[[sources]]
+name = "raindrop"
+enabled = true
+db_path = "raindrop/chronicle/chronicle.db"
+category = "reading"
+
+[[sources.queries]]
+table = "events"
+entry_type = "bookmark"
+action_type = "BookmarkAction"
+object_type = "WebPage"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.name') as title,
+    TRIM(COALESCE(json_extract(object, '$.description'), '') || ' ' || COALESCE(json_extract(object, '$.note'), '') || ' ' ||
+      COALESCE((SELECT group_concat(json_extract(h.value, '$.text') || COALESCE(' ' || json_extract(h.value, '$.note'), ''), ' ')
+                FROM json_each(json_extract(object, '$.highlights')) h), '') || ' ' ||
+      COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.keywords')) k), '') || ' ' ||
+      COALESCE(json_extract(result, '$.name'), '')) as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events WHERE type = 'BookmarkAction'
+"""
+
 [[sources]]
 name = "readwise"
 enabled = true
@@ -251,6 +304,117 @@ SELECT
 FROM events WHERE actionStatus = 'completed' AND endTime IS NOT NULL
 """
 
+# Apple Reminders, shaped like Things: one entry when made, one when completed.
+[[sources]]
+name = "apple-reminders"
+enabled = true
+db_path = "apple-reminders/chronicle/chronicle.db"
+category = "productivity"
+
+[[sources.queries]]
+table = "events"
+entry_type = "reminder"
+action_type = "CreateAction"
+object_type = "Action"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    TRIM(COALESCE(description, '') || ' ' || COALESCE(json_extract(result, '$.name'), '')) as content,
+    startTime as occurred_at,
+    NULL as url
+FROM events WHERE startTime IS NOT NULL
+"""
+
+[[sources.queries]]
+table = "events"
+entry_type = "reminder-completed"
+action_type = "CompleteAction"
+object_type = "Action"
+sql = """
+SELECT
+    source_id || '-completed' as external_id,
+    '✓ ' || name as title,
+    TRIM(COALESCE(description, '') || ' ' || COALESCE(json_extract(result, '$.name'), '')) as content,
+    endTime as occurred_at,
+    NULL as url
+FROM events WHERE actionStatus = 'completed' AND endTime IS NOT NULL
+"""
+
+# OmniFocus, shaped like Things: one entry when made, one when completed.
+[[sources]]
+name = "omnifocus"
+enabled = true
+db_path = "omnifocus/chronicle/chronicle.db"
+category = "productivity"
+
+[[sources.queries]]
+table = "events"
+entry_type = "task"
+action_type = "CreateAction"
+object_type = "Action"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    TRIM(COALESCE(description, '') || ' ' || COALESCE(json_extract(result, '$.name'), '') || ' ' || COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.keywords')) k), '')) as content,
+    startTime as occurred_at,
+    NULL as url
+FROM events WHERE startTime IS NOT NULL
+"""
+
+[[sources.queries]]
+table = "events"
+entry_type = "task-completed"
+action_type = "CompleteAction"
+object_type = "Action"
+sql = """
+SELECT
+    source_id || '-completed' as external_id,
+    '✓ ' || name as title,
+    TRIM(COALESCE(description, '') || ' ' || COALESCE(json_extract(result, '$.name'), '') || ' ' || COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.keywords')) k), '')) as content,
+    endTime as occurred_at,
+    NULL as url
+FROM events WHERE actionStatus = 'completed' AND endTime IS NOT NULL
+"""
+
+# Todoist, shaped like Things: one entry when added, one when completed.
+[[sources]]
+name = "todoist"
+enabled = true
+db_path = "todoist/chronicle/chronicle.db"
+category = "productivity"
+
+[[sources.queries]]
+table = "events"
+entry_type = "task"
+action_type = "CreateAction"
+object_type = "Action"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    TRIM(COALESCE(description, '') || ' ' || COALESCE(json_extract(result, '$.name'), '') || ' ' || COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.keywords')) k), '')) as content,
+    startTime as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events WHERE startTime IS NOT NULL AND source_id NOT LIKE '%@%'
+"""
+
+[[sources.queries]]
+table = "events"
+entry_type = "task-completed"
+action_type = "CompleteAction"
+object_type = "Action"
+sql = """
+SELECT
+    source_id || '-completed' as external_id,
+    '✓ ' || name as title,
+    TRIM(COALESCE(description, '') || ' ' || COALESCE(json_extract(result, '$.name'), '') || ' ' || COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.keywords')) k), '')) as content,
+    endTime as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events WHERE actionStatus = 'completed' AND endTime IS NOT NULL
+"""
+
 [[sources]]
 name = "timing"
 enabled = true
@@ -335,6 +499,75 @@ SELECT
 FROM events
 """
 
+# Google Chrome (Chromium). Template only: otso index enables a copy per Mac as google-chrome-<device>.
+[[sources]]
+name = "google-chrome"
+enabled = false
+per_device = true
+db_path = "google-chrome/chronicle/chronicle.db"
+category = "browse"
+
+[[sources.queries]]
+table = "events"
+entry_type = "visit"
+action_type = "ViewAction"
+object_type = "WebPage"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.name') as title,
+    COALESCE(json_extract(object, '$.url'), '') as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+"""
+
+# Arc (Chromium). Template only: otso index enables a copy per Mac as arc-<device>.
+[[sources]]
+name = "arc"
+enabled = false
+per_device = true
+db_path = "arc/chronicle/chronicle.db"
+category = "browse"
+
+[[sources.queries]]
+table = "events"
+entry_type = "visit"
+action_type = "ViewAction"
+object_type = "WebPage"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.name') as title,
+    COALESCE(json_extract(object, '$.url'), '') as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+"""
+
+# Dia (Chromium). Template only: otso index enables a copy per Mac as dia-<device>.
+[[sources]]
+name = "dia"
+enabled = false
+per_device = true
+db_path = "dia/chronicle/chronicle.db"
+category = "browse"
+
+[[sources.queries]]
+table = "events"
+entry_type = "visit"
+action_type = "ViewAction"
+object_type = "WebPage"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.name') as title,
+    COALESCE(json_extract(object, '$.url'), '') as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+"""
+
 # ============================================================================
 # NOTES & DOCUMENTS
 # ============================================================================
@@ -357,6 +590,100 @@ SELECT
     COALESCE(text, '') as content,
     date_created as occurred_at,
     NULL as url
+FROM events
+"""
+
+# Granola meetings: the summary, your own notes and the transcript are all searchable.
+[[sources]]
+name = "granola"
+enabled = true
+db_path = "granola/chronicle/chronicle.db"
+category = "notes"
+
+[[sources.queries]]
+table = "events"
+entry_type = "meeting"
+action_type = "CreateAction"
+object_type = "NoteDigitalDocument"
+sql = """
+SELECT
+    e.source_id as external_id,
+    e.name as title,
+    TRIM(COALESCE(e.description, '') || char(10) || COALESCE(e.text, '') || char(10) ||
+      COALESCE((SELECT group_concat(COALESCE(json_extract(a.value, '$.name'), json_extract(a.value, '$.email')), ', ')
+                FROM json_each(json_extract(e.object, '$.attendees')) a), '') || char(10) ||
+      COALESCE(t.text, '')) as content,
+    e.startTime as occurred_at,
+    json_extract(e.object, '$.url') as url
+FROM events e
+LEFT JOIN granola_transcripts t ON t.source_id = e.source_id
+"""
+
+# Obsidian vaults (settings.obsidianVaults, else the vaults Obsidian has open).
+[[sources]]
+name = "obsidian"
+enabled = true
+db_path = "obsidian/chronicle/chronicle.db"
+category = "notes"
+
+[[sources.queries]]
+table = "events"
+entry_type = "note"
+action_type = "CreateAction"
+object_type = "NoteDigitalDocument"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    TRIM(COALESCE(text, '') || ' ' || COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.keywords')) k), '')) as content,
+    dateCreated as occurred_at,
+    NULL as url
+FROM events
+"""
+
+# iA Writer's iCloud library.
+[[sources]]
+name = "ia-writer"
+enabled = true
+db_path = "ia-writer/chronicle/chronicle.db"
+category = "notes"
+
+[[sources.queries]]
+table = "events"
+entry_type = "note"
+action_type = "CreateAction"
+object_type = "NoteDigitalDocument"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    TRIM(COALESCE(text, '') || ' ' || COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.keywords')) k), '')) as content,
+    dateCreated as occurred_at,
+    NULL as url
+FROM events
+"""
+
+# DEVONthink records from every open database.
+[[sources]]
+name = "devonthink"
+enabled = true
+db_path = "devonthink/chronicle/chronicle.db"
+category = "notes"
+
+[[sources.queries]]
+table = "events"
+entry_type = "document"
+action_type = "CreateAction"
+object_type = "DigitalDocument"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    TRIM(COALESCE(description, '') || char(10) || COALESCE(text, '') || char(10) ||
+      COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.keywords')) k), '') || ' ' ||
+      COALESCE(json_extract(object, '$.location'), '')) as content,
+    dateCreated as occurred_at,
+    COALESCE(json_extract(object, '$.url'), 'x-devonthink-item://' || source_id) as url
 FROM events
 """
 
@@ -425,7 +752,7 @@ sql = """
 SELECT
     rowid as external_id,
     json_extract(object, '$.name') as title,
-    COALESCE(json_extract(object, '$.address.streetAddress'), '') || ' ' || COALESCE(json_extract(object, '$.address.addressLocality'), '') as content,
+    TRIM(COALESCE(json_extract(object, '$.address.streetAddress'), '') || ' ' || COALESCE(json_extract(object, '$.address.addressLocality'), '') || ' ' || COALESCE(json_extract(object, '$.category'), '') || ' ' || COALESCE(json_extract(object, '$.shout'), '')) as content,
     end_time as occurred_at,
     json_extract(object, '$.url') as url
 FROM events
@@ -739,6 +1066,33 @@ SELECT
     CAST(((CAST(tweet_id AS INTEGER) >> 22) + 1288834974657) / 1000 AS TEXT) as occurred_at,
     expanded_url as url
 FROM likes
+"""
+
+# ============================================================================
+# CALENDAR
+# ============================================================================
+
+# Calendar.app's cache of every account it shows (iCloud, Google, Exchange).
+[[sources]]
+name = "apple-calendar"
+enabled = true
+db_path = "apple-calendar/chronicle/chronicle.db"
+category = "calendar"
+
+[[sources.queries]]
+table = "events"
+entry_type = "event"
+action_type = "AttendAction"
+object_type = "Event"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    TRIM(COALESCE(description, '') || ' ' || COALESCE(json_extract(contentLocation, '$.name'), '') || ' ' || COALESCE(json_extract(contentLocation, '$.address'), '') || ' ' || COALESCE(additionalType, '')) as content,
+    startTime as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+WHERE COALESCE(actionStatus, '') <> 'canceled'
 """
 
 # ============================================================================

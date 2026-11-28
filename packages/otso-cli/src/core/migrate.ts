@@ -87,6 +87,12 @@ export function mapChronicleCredentials(dir: string): Record<string, Credentials
     out.spotify = { clientId: sp.client_id, clientSecret: sp.client_secret, refreshToken: sp.refresh_token };
   }
 
+  // Chronicle's Foursquare plugin kept its own app's id and secret with the user token.
+  const fsq = secret('foursquare');
+  if (usable(fsq.client_id) && usable(fsq.client_secret) && usable(fsq.access_token)) {
+    out.foursquare = { clientId: fsq.client_id, clientSecret: fsq.client_secret, accessToken: fsq.access_token };
+  }
+
   return out;
 }
 
