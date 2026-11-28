@@ -119,6 +119,24 @@ beforeAll(() => {
     `CREATE TABLE TMTask (uuid TEXT, type INTEGER, status INTEGER, trashed INTEGER, title TEXT, notes TEXT, creationDate REAL, stopDate REAL);
      INSERT INTO TMTask VALUES ('T1', 0, 3, 0, 'Ship otso', 'notes', 1700000000, 1700100000), ('T2', 0, 0, 0, 'Open task', '', 1700000000, NULL), ('T3', 0, 0, 1, 'Trashed', '', 1, NULL);`
   );
+
+  appDb(
+    'Library/Application Support/info.eurocomp.Timing2/SQLite.db',
+    `CREATE TABLE Application (id INTEGER PRIMARY KEY, bundleIdentifier TEXT, executable TEXT, title TEXT);
+     CREATE TABLE Title (id INTEGER PRIMARY KEY, stringValue TEXT);
+     CREATE TABLE Path (id INTEGER PRIMARY KEY, stringValue TEXT);
+     CREATE TABLE Project (id INTEGER PRIMARY KEY, title TEXT);
+     CREATE TABLE AppActivity (id INTEGER PRIMARY KEY, localDeviceID INTEGER, startDate REAL, endDate REAL, applicationID INTEGER, titleID INTEGER, pathID INTEGER, projectID INTEGER, isDeleted BOOLEAN DEFAULT 0);
+     INSERT INTO Application VALUES (1, 'dev.zed.Zed', 'zed', 'Zed'), (2, 'com.apple.Safari', 'Safari', 'Safari');
+     INSERT INTO Title VALUES (1, 'otso'), (2, 'Example Domain');
+     INSERT INTO Path VALUES (1, 'https://example.com/'), (2, 'Otso - Claude Code');
+     INSERT INTO Project VALUES (1, 'Web Browsing');
+     INSERT INTO AppActivity VALUES
+       (101, 1, 1600000000, 1600000060, 1, 1, NULL, NULL, 0),
+       (102, 1, 1700000000, 1700000030, 2, 2, 1, 1, 0),
+       (103, 1, 1700000100, 1700000130, 2, 2, 1, 1, 1),
+       (3856625907413930497, 1, 1700000200, 1700000230, 1, NULL, 2, NULL, 0);`
+  );
 });
 
 afterAll(() => {
@@ -251,6 +269,33 @@ describe('local macOS sources sync idempotently into sources.toml-readable rows'
     await syncTwice('things');
     const rows = runTomlQueries('things', sources);
     expect(rows.map((r: any) => r.title).sort()).toEqual(['Open task', 'Ship otso', '✓ Ship otso']);
+  });
+
+  test('timing: app activity in the Chronicle shape the sources.toml query reads', async () => {
+    const { sources } = sandbox();
+    const r = await syncTwice('timing');
+    expect(r.stats.events.inserted).toBe(3);
+    const rows = runTomlQueries('timing', sources).sort((a: any, b: any) => a.occurred_at.localeCompare(b.occurred_at));
+    expect(rows.map((r: any) => [r.external_id, r.title, r.content.trim(), r.url])).toEqual([
+      ['101', 'Zed', 'otso', null],
+      ['102', 'Safari', 'Example Domain Web Browsing', 'https://example.com/'],
+      ['3856625907413930497', 'Zed', 'Otso - Claude Code', null],
+    ]);
+  });
+
+  test('timing: continues a Chronicle-era database instead of re-reading history', async () => {
+    const { sources } = sandbox();
+    const dbFile = join(sources, 'timing/chronicle/chronicle.db');
+    mkdirSync(dirname(dbFile), { recursive: true });
+    const old = new Database(dbFile, { create: true });
+    old.exec(`CREATE TABLE events (agent TEXT, end_time TEXT, object TEXT, source TEXT, source_id TEXT, type TEXT, result TEXT, startTime TEXT);
+              INSERT INTO events VALUES ('{"name":"Zed"}', NULL, '{"name":"old"}', 'timing', '1', 'Action', NULL, '2023-11-01T00:00:00Z');`);
+    old.close();
+    const r = await syncTwice('timing');
+    // 101 (2020) is older than the stored history, so it isn't read again.
+    expect(r.stats.events.inserted).toBe(2);
+    const ids = runTomlQueries('timing', sources).map((r: any) => r.external_id).sort();
+    expect(ids).toEqual(['1', '102', '3856625907413930497']);
   });
 
   test('missing database fails cleanly without leaving an empty db behind', async () => {
