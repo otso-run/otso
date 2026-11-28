@@ -234,12 +234,22 @@ export interface SourceStatus {
 function fillFromDb(status: SourceStatus, path: string, tables: Connector['tables']) {
   status.dbExists = existsSync(path) && statSync(path).size > 0;
   if (!status.dbExists) return;
-  const store = ChronicleStore.open(path);
+  // Another Mac's sync can replace this file on the share while we read it
+  // (SQLITE_IOERR_VNODE). The counts are only for display, so carry on
+  // without them rather than failing the whole sync.
+  let store: ChronicleStore | undefined;
   try {
-    status.rows = tables.reduce((n, t) => n + store.count(t.name), 0);
+    store = ChronicleStore.open(path);
+    status.rows = tables.reduce((n, t) => n + store!.count(t.name), 0);
     status.lastRun = readLastRun(store);
+  } catch {
+    // leave rows and lastRun unset
   } finally {
-    store.close();
+    try {
+      store?.close();
+    } catch {
+      // already gone
+    }
   }
 }
 

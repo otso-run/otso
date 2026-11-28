@@ -49,6 +49,8 @@ export interface Settings {
   indexerPath?: string;
   /** This Mac's name for per-device sources (safari-<device>); defaults from the hostname. */
   device?: string;
+  /** Obsidian vault folders to sync; defaults to the vaults Obsidian has open. */
+  obsidianVaults?: string[];
 }
 
 export function readSettings(): Settings {
