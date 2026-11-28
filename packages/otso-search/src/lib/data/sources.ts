@@ -37,6 +37,9 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
   // Browse (Web/App Usage)
   'safari': { label: 'Safari', cat: 'browse', icon: '🧭' },
   'helium': { label: 'Helium', cat: 'browse', icon: '◎' },
+  'google-chrome': { label: 'Chrome', cat: 'browse', icon: '◉' },
+  'arc': { label: 'Arc', cat: 'browse', icon: '◠' },
+  'dia': { label: 'Dia', cat: 'browse', icon: '◇' },
   'chrome': { label: 'Chrome', cat: 'browse', icon: '◉' },
   'google-search': { label: 'Google', cat: 'browse', icon: '🔍' },
   'google-activity': { label: 'Google Activity', cat: 'browse', icon: '🔍' },
@@ -91,6 +94,7 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
   'obsidian': { label: 'Obsidian', cat: 'note', icon: '◈' },
   'remarkable': { label: 'reMarkable', cat: 'note', icon: '✎' },
   'devonthink': { label: 'DEVONthink', cat: 'note', icon: '🗄' },
+  'granola': { label: 'Granola', cat: 'note', icon: '🥣' },
   'google-keep': { label: 'Keep', cat: 'note', icon: '💡' },
   'blogger': { label: 'Blogger', cat: 'note', icon: 'B' },
 
@@ -110,6 +114,7 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
 
   // Event (Calendar)
   'calendar': { label: 'Calendar', cat: 'event', icon: '📅' },
+  'apple-calendar': { label: 'Calendar', cat: 'event', icon: '📅' },
   'gcal': { label: 'Calendar', cat: 'event', icon: '📆' },
 
   // Spend (Financial)

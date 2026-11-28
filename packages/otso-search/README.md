@@ -137,6 +137,8 @@ A browser reload reads the running snapshot. Repeat the reindex, conversion, and
 
 **by category** (on by default) groups sources the way the search page's category chips do, so all browsers or all music sources share one lane. That lane only shows a gap when none of its sources had anything, and selecting it lists the sources under it. Categories with a single source stay as a plain lane.
 
+Sources you no longer use can be archived from a source's details (or with `otso archive <source>`). They move to an Archived group at the bottom, drawn dimmed and never flagged as quiet, and syncing skips them. The list lives in `<sources-dir>/archived.json`, which the page finds through `OTSO_SOURCES_DIR`, the CLI's `~/.otso/config/settings.json`, or `OTSO_DATA_DIR`.
+
 The page reads `search_entry_map` once and keeps the result until the index changes on disk, so the first load after a rebuild takes a moment on a large archive.
 
 ## Running without real data
