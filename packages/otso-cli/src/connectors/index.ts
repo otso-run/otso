@@ -5,6 +5,7 @@ import { pinboard } from './pinboard.js';
 import { raindrop } from './raindrop.js';
 import { lastfm } from './lastfm.js';
 import { github } from './github.js';
+import { granola } from './granola.js';
 import { spotify } from './spotify.js';
 import { claude } from './claude.js';
 import { linkedin } from './linkedin.js';
@@ -24,6 +25,7 @@ export const CONNECTORS: Connector[] = [
   raindrop,
   lastfm,
   github,
+  granola,
   // Archive exports
   spotify,
   claude,
