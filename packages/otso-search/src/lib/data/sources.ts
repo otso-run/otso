@@ -42,6 +42,7 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
   'dia': { label: 'Dia', cat: 'browse', icon: '◇' },
   'chrome': { label: 'Chrome', cat: 'browse', icon: '◉' },
   'google-search': { label: 'Google', cat: 'browse', icon: '🔍' },
+  'google-activity': { label: 'Google Activity', cat: 'browse', icon: '🔍' },
   'atlas': { label: 'Atlas', cat: 'browse', icon: '🗺' },
   'timing': { label: 'Timing', cat: 'browse', icon: '⏱' },
 
@@ -73,6 +74,10 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
   'messages': { label: 'Messages', cat: 'message', icon: '💬' },
   'slack': { label: 'Slack', cat: 'message', icon: '#' },
   'google-chat': { label: 'Google Chat', cat: 'message', icon: '💬' },
+  'google-voice': { label: 'Google Voice', cat: 'message', icon: '☎' },
+  'gmail': { label: 'Gmail', cat: 'message', icon: '✉' },
+  'google-groups': { label: 'Google Groups', cat: 'message', icon: '👥' },
+  'google-contacts': { label: 'Contacts', cat: 'message', icon: '👤' },
   'fastmail': { label: 'Fastmail', cat: 'message', icon: '✉' },
   'email': { label: 'Email', cat: 'message', icon: '✉' },
 
@@ -80,6 +85,8 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
   'claude': { label: 'Claude', cat: 'ai', icon: '◑' },
   'chatgpt': { label: 'ChatGPT', cat: 'ai', icon: '◐' },
   'perplexity': { label: 'Perplexity', cat: 'ai', icon: '?' },
+  'gemini': { label: 'Gemini', cat: 'ai', icon: '✦' },
+  'notebooklm': { label: 'NotebookLM', cat: 'ai', icon: '📓' },
 
   // Note (Notes/Writing)
   'apple-notes': { label: 'Notes', cat: 'note', icon: '✏️' },
@@ -87,6 +94,8 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
   'obsidian': { label: 'Obsidian', cat: 'note', icon: '◈' },
   'remarkable': { label: 'reMarkable', cat: 'note', icon: '✎' },
   'devonthink': { label: 'DEVONthink', cat: 'note', icon: '🗄' },
+  'google-keep': { label: 'Keep', cat: 'note', icon: '💡' },
+  'blogger': { label: 'Blogger', cat: 'note', icon: 'B' },
 
   // Photo (Photos)
   'apple-photos': { label: 'Photos', cat: 'photo', icon: '📸' },
@@ -113,6 +122,7 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
   // Travel (Location)
   'foursquare': { label: 'Foursquare', cat: 'travel', icon: '📍' },
   'googlemaps': { label: 'Google Maps', cat: 'travel', icon: '🗺' },
+  'google-maps': { label: 'Google Maps', cat: 'travel', icon: '🗺' },
 
   // Health (Health & Fitness)
   'applehealth': { label: 'Apple Health', cat: 'health', icon: '❤️' },
