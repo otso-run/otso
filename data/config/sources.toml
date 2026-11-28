@@ -738,6 +738,33 @@ FROM likes
 """
 
 # ============================================================================
+# CALENDAR
+# ============================================================================
+
+# Calendar.app's cache of every account it shows (iCloud, Google, Exchange).
+[[sources]]
+name = "apple-calendar"
+enabled = true
+db_path = "apple-calendar/chronicle/chronicle.db"
+category = "calendar"
+
+[[sources.queries]]
+table = "events"
+entry_type = "event"
+action_type = "AttendAction"
+object_type = "Event"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    TRIM(COALESCE(description, '') || ' ' || COALESCE(json_extract(contentLocation, '$.name'), '') || ' ' || COALESCE(json_extract(contentLocation, '$.address'), '') || ' ' || COALESCE(additionalType, '')) as content,
+    startTime as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+WHERE COALESCE(actionStatus, '') <> 'canceled'
+"""
+
+# ============================================================================
 # GOOGLE TAKEOUT (Multiple tables in one DB)
 # ============================================================================
 
