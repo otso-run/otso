@@ -10,6 +10,7 @@ All notable changes to Otso are recorded here. The format is based on
 
 - Readwise Reader documents keep their full article text, and search finds words from the body, not just the title and summary. Results also show the author, site, published date, reading time, tags, notes, reading progress and when you saved and last opened each one. The first sync after upgrading fetches every Reader document once to fill this in. [#38](https://github.com/otso-run/otso/pull/38)
 - A Coverage page in Otso Search (`/coverage`) lines up every source on one time axis, so you can see where each archive starts, where it has gaps and which sources have gone quiet. Choose the smallest gap worth flagging, drag to zoom, and open a source's longest gaps or jump to it in search. It works on phones too. [#41](https://github.com/otso-run/otso/pull/41)
+- `otso sync apple-reminders` brings in Apple Reminders from every account, with notes, list, due date and flag. Like Things, each reminder shows up when it was made and again when it was completed, and reminders deleted in the app are removed. Needs Full Disk Access. [#49](https://github.com/otso-run/otso/pull/49)
 
 ### Changed
 
