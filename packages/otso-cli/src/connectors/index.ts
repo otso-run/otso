@@ -10,7 +10,7 @@ import { linkedin } from './linkedin.js';
 import { twitter } from './twitter.js';
 import { googleTakeout } from './google-takeout.js';
 import { gmail } from './gmail.js';
-import { safari, helium, imessage, appleNotes, applePhotos, applePodcasts, things } from './local.js';
+import { safari, helium, imessage, appleNotes, applePhotos, applePodcasts, things, timing } from './local.js';
 
 import { googleChrome, arc, dia } from './browsers.js';
 
@@ -41,6 +41,7 @@ export const CONNECTORS: Connector[] = [
   applePhotos,
   applePodcasts,
   things,
+  timing,
 ];
 
 export function getConnector(id: string): Connector | undefined {
