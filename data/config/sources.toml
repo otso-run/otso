@@ -992,6 +992,67 @@ FROM blocks
 # SOCIAL MEDIA - TWITTER (Raw Archive Format)
 # ============================================================================
 
+# Mastodon: your posts and boosts, and the posts you favourited or bookmarked.
+[[sources]]
+name = "mastodon"
+enabled = true
+db_path = "mastodon/chronicle/chronicle.db"
+category = "social"
+
+[[sources.queries]]
+table = "events"
+entry_type = "post"
+action_type = "CreateAction"
+object_type = "SocialMediaPosting"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.name') as title,
+    TRIM(COALESCE(json_extract(object, '$.text'), '') || ' ' ||
+      COALESCE((SELECT group_concat(m.value, ' ') FROM json_each(json_extract(object, '$.media')) m), '') || ' ' ||
+      COALESCE((SELECT group_concat('#' || t.value, ' ') FROM json_each(json_extract(object, '$.tags')) t), '') || ' ' ||
+      COALESCE(json_extract(object, '$.author'), '')) as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events WHERE type IN ('CreateAction', 'ShareAction')
+"""
+
+[[sources.queries]]
+table = "events"
+entry_type = "like"
+action_type = "LikeAction"
+object_type = "SocialMediaPosting"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.name') as title,
+    TRIM(COALESCE(json_extract(object, '$.text'), '') || ' ' ||
+      COALESCE((SELECT group_concat(m.value, ' ') FROM json_each(json_extract(object, '$.media')) m), '') || ' ' ||
+      COALESCE((SELECT group_concat('#' || t.value, ' ') FROM json_each(json_extract(object, '$.tags')) t), '') || ' ' ||
+      COALESCE(json_extract(object, '$.author'), '')) as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events WHERE type = 'LikeAction'
+"""
+
+[[sources.queries]]
+table = "events"
+entry_type = "bookmark"
+action_type = "BookmarkAction"
+object_type = "SocialMediaPosting"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.name') as title,
+    TRIM(COALESCE(json_extract(object, '$.text'), '') || ' ' ||
+      COALESCE((SELECT group_concat(m.value, ' ') FROM json_each(json_extract(object, '$.media')) m), '') || ' ' ||
+      COALESCE((SELECT group_concat('#' || t.value, ' ') FROM json_each(json_extract(object, '$.tags')) t), '') || ' ' ||
+      COALESCE(json_extract(object, '$.author'), '')) as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events WHERE type = 'BookmarkAction'
+"""
+
 [[sources]]
 name = "twitter-mockuser"
 enabled = true

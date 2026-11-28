@@ -5,6 +5,7 @@ import { pinboard } from './pinboard.js';
 import { raindrop } from './raindrop.js';
 import { lastfm } from './lastfm.js';
 import { github } from './github.js';
+import { mastodon } from './mastodon.js';
 import { foursquare } from './foursquare.js';
 import { notion } from './notion.js';
 import { todoist } from './todoist.js';
@@ -35,6 +36,7 @@ export const CONNECTORS: Connector[] = [
   raindrop,
   lastfm,
   github,
+  mastodon,
   foursquare,
   notion,
   todoist,
