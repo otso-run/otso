@@ -5,9 +5,11 @@ use tokio::task::JoinSet;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod config;
+mod db;
 mod event_store;
 mod extractors;
 mod projections;
+mod report;
 
 #[derive(Parser)]
 #[command(name = "otso-indexer")]
@@ -26,6 +28,16 @@ struct Cli {
     #[arg(long)]
     sources_dir: Option<String>,
 
+    /// Copy each source database here before reading it, reusing the copy
+    /// while the source is unchanged. Much faster when sources-dir is a
+    /// network share.
+    #[arg(long)]
+    local_copy_dir: Option<String>,
+
+    /// Write a JSON report of the build (per-source timings, counts, errors) here
+    #[arg(long)]
+    report: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -41,6 +53,10 @@ enum Commands {
         /// Rebuild Meilisearch index only (skip event store ingestion)
         #[arg(long)]
         meili_only: bool,
+
+        /// Also build sources marked `fixture = true` (mock data in data/fixtures)
+        #[arg(long)]
+        include_fixtures: bool,
     },
 
     /// Show statistics for all sources
@@ -92,8 +108,16 @@ async fn main() -> Result<()> {
     );
 
     match cli.command {
-        Commands::Build { source, meili_only } => {
-            run_build(&cli.data_dir, cli.sources_dir.as_deref(), &config, source.as_deref(), meili_only).await
+        Commands::Build { source, meili_only, include_fixtures } => {
+            let opts = BuildOptions {
+                sources_dir: cli.sources_dir.as_deref(),
+                local_copy_dir: cli.local_copy_dir.as_deref().map(std::path::Path::new),
+                report: cli.report.as_deref(),
+                source: source.as_deref(),
+                meili_only,
+                include_fixtures,
+            };
+            run_build(&cli.data_dir, &config, opts).await
         }
         Commands::Stats { source } => {
             run_stats(&cli.data_dir, &config, source.as_deref()).await
@@ -107,29 +131,37 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn run_build(
-    data_dir: &str,
-    sources_dir: Option<&str>,
-    config: &config::Config,
-    source: Option<&str>,
+struct BuildOptions<'a> {
+    sources_dir: Option<&'a str>,
+    local_copy_dir: Option<&'a std::path::Path>,
+    report: Option<&'a str>,
+    source: Option<&'a str>,
     meili_only: bool,
-) -> Result<()> {
-    let sources = match source {
+    include_fixtures: bool,
+}
+
+async fn run_build(data_dir: &str, config: &config::Config, opts: BuildOptions<'_>) -> Result<()> {
+    let started = std::time::Instant::now();
+    let mut run = report::RunReport::start();
+
+    let sources = match opts.source {
         Some(name) => {
             let src = config.sources.iter()
                 .find(|s| s.name == name)
                 .ok_or_else(|| anyhow::anyhow!("Source not found: {}", name))?;
             vec![src.clone()]
         }
+        // Fixture sources (mock accounts in data/fixtures) only belong in a
+        // fixtures build; in a real one they'd just be "Database not found".
         None => config.sources.iter()
-            .filter(|s| s.enabled)
+            .filter(|s| s.enabled && (opts.include_fixtures || !s.fixture))
             .cloned()
             .collect()
     };
 
     tracing::info!("Building {} sources", sources.len());
 
-    if meili_only {
+    if opts.meili_only {
         tracing::info!("Meilisearch-only mode: skipping event store ingestion");
         // TODO: Implement meili rebuild from event store
         return Ok(());
@@ -145,89 +177,136 @@ async fn run_build(
     }
 
     // Determine source data directory: CLI flag, then config, then <data_dir>/sources
-    let source_data_dir: Arc<str> = sources_dir
+    let source_data_dir: Arc<str> = opts.sources_dir
         .map(str::to_string)
         .or_else(|| config.defaults.data_dir.clone())
         .unwrap_or_else(|| format!("{}/sources", data_dir))
         .into();
     tracing::info!("Reading source databases from {}", source_data_dir);
+    let local_copy_dir: Option<Arc<std::path::Path>> = opts.local_copy_dir.map(Arc::from);
+    if let Some(dir) = &local_copy_dir {
+        tracing::info!("Reading from local copies in {}", dir.display());
+    }
 
     // Process sources in parallel using JoinSet (NFR-004)
-    let mut join_set: JoinSet<(String, Result<event_store::BatchStats>)> = JoinSet::new();
+    let mut join_set: JoinSet<report::SourceReport> = JoinSet::new();
 
     for source_config in sources {
         let store = Arc::clone(&event_store);
         let data_dir = Arc::clone(&source_data_dir);
-        let source_name = source_config.name.clone();
+        let copy_dir = local_copy_dir.clone();
 
         join_set.spawn(async move {
-            tracing::info!("Processing source: {}", source_name);
-            let result = process_source(&store, &data_dir, &source_config).await;
-            (source_name, result)
+            tracing::info!("Processing source: {}", source_config.name);
+            process_source(&store, &data_dir, copy_dir.as_deref(), &source_config).await
         });
     }
 
     // Collect results
-    let mut success_count = 0;
-    let mut error_count = 0;
-
     while let Some(result) = join_set.join_next().await {
         match result {
-            Ok((source_name, Ok(stats))) => {
-                tracing::info!(
-                    "  {} events: {} inserted, {} updated, {} unchanged",
-                    source_name,
-                    stats.inserted,
-                    stats.updated,
-                    stats.skipped
-                );
-                success_count += 1;
-            }
-            Ok((source_name, Err(e))) => {
-                tracing::error!("  {} failed: {}", source_name, e);
-                error_count += 1;
+            Ok(source) => {
+                match &source.error {
+                    None if source.extract.missing => {}
+                    None => tracing::info!(
+                        "  {} events: {} inserted, {} updated, {} unchanged ({:.1}s)",
+                        source.name,
+                        source.inserted,
+                        source.updated,
+                        source.skipped,
+                        source.total_ms as f64 / 1000.0
+                    ),
+                    Some(e) => tracing::error!("  {} failed: {}", source.name, e),
+                }
+                run.sources.push(source);
             }
             Err(join_error) => {
                 tracing::error!("Task panicked: {}", join_error);
-                error_count += 1;
+                run.sources.push(report::SourceReport::failed("(panicked task)", join_error.to_string()));
             }
         }
     }
+    run.sources.sort_by(|a, b| a.name.cmp(&b.name));
 
+    let failed = run.sources.iter().filter(|s| s.error.is_some()).count();
     tracing::info!(
         "Completed {} sources ({} succeeded, {} failed)",
-        success_count + error_count,
-        success_count,
-        error_count
+        run.sources.len(),
+        run.sources.len() - failed,
+        failed
     );
 
     // Update projections
     tracing::info!("Updating projections...");
-    projections::update_all(data_dir, &event_store).await?;
+    let projection = projections::update_all(data_dir, &event_store).await;
+    match &projection {
+        Ok(stats) => {
+            run.projection = Some(report::ProjectionReport {
+                added: stats.entries_added,
+                ms: stats.duration_ms as u64,
+                error: None,
+            })
+        }
+        Err(e) => {
+            run.projection = Some(report::ProjectionReport { added: 0, ms: 0, error: Some(format!("{:#}", e)) })
+        }
+    }
 
+    run.duration_ms = started.elapsed().as_millis() as u64;
+    if let Some(path) = opts.report {
+        if let Err(e) = run.write(path) {
+            tracing::warn!("Couldn't write the run report to {}: {}", path, e);
+        }
+    }
+
+    projection?;
     Ok(())
 }
 
 async fn process_source(
     event_store: &Arc<event_store::SqliteEventStore>,
     source_data_dir: &str,
+    local_copy_dir: Option<&std::path::Path>,
     source_config: &config::SourceConfig,
-) -> Result<event_store::BatchStats> {
-    // Begin batch transaction
-    let tx = event_store.begin_batch(&source_config.name).await?;
+) -> report::SourceReport {
+    let started = std::time::Instant::now();
+    let mut out = report::SourceReport::new(&source_config.name);
 
-    // Extract events based on source type
-    let events = extractors::extract(source_data_dir, source_config).await?;
+    let result: Result<()> = async {
+        // Read first: a failed or missing source then leaves no batch behind.
+        let (events, extract) = extractors::extract(source_data_dir, source_config, local_copy_dir).await?;
+        out.events = events.len() as i64;
+        out.extract = extract;
+        if out.extract.missing {
+            return Ok(());
+        }
 
-    // Append events to transaction
-    for event in events {
-        event_store.append(&tx, event).await?;
+        let write_started = std::time::Instant::now();
+        let tx = event_store.begin_batch(&source_config.name).await?;
+        let batch_id = tx.batch_id;
+        match event_store.append_many(&tx, &events).await {
+            Ok(_) => {
+                let stats = event_store.commit(tx).await?;
+                out.inserted = stats.inserted;
+                out.updated = stats.updated;
+                out.skipped = stats.skipped;
+            }
+            Err(e) => {
+                // Soft-delete what this batch wrote before the error.
+                event_store.rollback_batch(batch_id).await.ok();
+                return Err(e);
+            }
+        }
+        out.write_ms = write_started.elapsed().as_millis() as u64;
+        Ok(())
     }
+    .await;
 
-    // Commit transaction
-    let stats = event_store.commit(tx).await?;
-
-    Ok(stats)
+    if let Err(e) = result {
+        out.error = Some(format!("{:#}", e));
+    }
+    out.total_ms = started.elapsed().as_millis() as u64;
+    out
 }
 
 async fn run_stats(

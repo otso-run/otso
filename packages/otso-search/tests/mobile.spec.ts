@@ -96,7 +96,7 @@ test.describe('Coverage on a phone', () => {
   });
 
   test('a tap on a lane name opens its gaps', async ({ page }) => {
-    await page.locator('.lanes .lane-label').first().tap();
+    await page.locator('.lanes > .lane:not(.group) .lane-label').first().tap();
     await expect(page.locator('.details')).toHaveCount(1);
   });
 });
