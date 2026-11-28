@@ -24,6 +24,9 @@ pub struct ExtractReport {
     pub copy_reused: bool,
     pub read_ms: u64,
     pub queries: Vec<QueryTiming>,
+    /// Tables the source's queries name that the database doesn't have.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub missing_tables: Vec<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -61,6 +64,14 @@ pub async fn extract(
         report.missing = true;
         return Ok((vec![], report));
     }
+    // A zero-byte file is a database being replaced (or a sync that failed
+    // before writing anything): treat it like a missing one, so the run
+    // neither fails nor touches what's already indexed for this source.
+    if std::fs::metadata(&db_path).map(|m| m.len() == 0).unwrap_or(false) {
+        tracing::warn!("Database is empty: {}", db_path.display());
+        report.missing = true;
+        return Ok((vec![], report));
+    }
 
     let (read_path, immutable) = match local_copy_dir {
         Some(dir) => {
@@ -82,8 +93,35 @@ pub async fn extract(
     let read_started = Instant::now();
     let pool = sqlite::open_source(&read_path, immutable).await?;
 
+    // Queries whose table isn't in the database yet (a source whose import
+    // hasn't created it, e.g. a Takeout product that wasn't in the export)
+    // are skipped; with none left, the source counts as missing, not failed.
+    let tables: std::collections::HashSet<String> =
+        sqlx::query_scalar("SELECT name FROM sqlite_master WHERE type IN ('table', 'view')")
+            .fetch_all(&pool)
+            .await?
+            .into_iter()
+            .collect();
+    let queries: Vec<_> = source_config
+        .queries
+        .iter()
+        .filter(|q| {
+            let present = q.table.is_empty() || tables.contains(&q.table);
+            if !present {
+                report.missing_tables.push(q.table.clone());
+            }
+            present
+        })
+        .collect();
+    if queries.is_empty() && !source_config.queries.is_empty() {
+        tracing::warn!("{}: none of its tables exist yet, skipping", source_config.name);
+        pool.close().await;
+        report.missing = true;
+        return Ok((vec![], report));
+    }
+
     // Execute each query
-    for query in &source_config.queries {
+    for query in queries {
         tracing::debug!(
             "Executing query for {}.{}",
             source_config.name,
@@ -442,6 +480,57 @@ fn aggregate_events(
 
 #[cfg(test)]
 mod tests {
+
+    fn source(queries: &[&str]) -> SourceConfig {
+        SourceConfig {
+            name: "s".into(),
+            enabled: true,
+            db_path: Some("s/chronicle.db".into()),
+            category: None,
+            queries: queries
+                .iter()
+                .map(|t| crate::config::QueryConfig {
+                    table: t.to_string(),
+                    entry_type: t.to_string(),
+                    sql: format!("SELECT id AS external_id, ts AS occurred_at FROM {t}"),
+                    action_type: None,
+                    object_type: None,
+                })
+                .collect(),
+            aggregation: None,
+            visibility: None,
+            fixture: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_tables_and_empty_files_count_as_missing_not_failed() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let root = dir.path().to_str().unwrap();
+        let db = dir.path().join("s").join("chronicle.db");
+        std::fs::create_dir_all(db.parent().unwrap()).unwrap();
+
+        // A zero-byte file (mid-replace): missing.
+        std::fs::write(&db, b"").unwrap();
+        let (events, report) = extract(root, &source(&["a"]), None).await.unwrap();
+        assert!(events.is_empty() && report.missing);
+
+        // One of two tables present: that one is read, the other noted.
+        std::fs::remove_file(&db).unwrap();
+        let pool = sqlx::SqlitePool::connect_with(crate::db::read_write(&db)).await.unwrap();
+        sqlx::query("CREATE TABLE a (id TEXT, ts INTEGER)").execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO a VALUES ('1', 1700000000)").execute(&pool).await.unwrap();
+        pool.close().await;
+        let (events, report) = extract(root, &source(&["a", "b"]), None).await.unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(!report.missing);
+        assert_eq!(report.missing_tables, vec!["b".to_string()]);
+
+        // None of its tables: missing, not an error.
+        let (events, report) = extract(root, &source(&["b", "c"]), None).await.unwrap();
+        assert!(events.is_empty() && report.missing);
+        assert_eq!(report.missing_tables.len(), 2);
+    }
 
     #[tokio::test]
     async fn local_copy_is_reused_until_the_source_changes() {
