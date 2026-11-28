@@ -18,6 +18,7 @@ import { configuredSourcesDir } from '../core/sources-config.js';
 import { ask } from './prompt.js';
 import { isNetworkPath } from '../core/storage.js';
 import { NotOnThisMacError } from '../connectors/util.js';
+import { SourceBusyError } from '../core/lock.js';
 import { getDeviceName, ShareNotMountedError, slugDevice } from '../core/device.js';
 import { appendRun, summarizeRun, type SourceRun } from '../core/runlog.js';
 
@@ -124,6 +125,10 @@ export async function syncCommand(ids: string[], opts: { full?: boolean; index?:
       const stored = describeStored(r, id);
       if (stored) console.log(`    ${stored}`);
     } catch (err) {
+      if (err instanceof SourceBusyError) {
+        console.log(`  – skipped: ${err.message}`);
+        continue;
+      }
       if (err instanceof NotOnThisMacError) {
         console.log(`  – skipped: ${err.message}`);
         continue;
