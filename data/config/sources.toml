@@ -425,7 +425,7 @@ sql = """
 SELECT
     rowid as external_id,
     json_extract(object, '$.name') as title,
-    COALESCE(json_extract(object, '$.address.streetAddress'), '') || ' ' || COALESCE(json_extract(object, '$.address.addressLocality'), '') as content,
+    TRIM(COALESCE(json_extract(object, '$.address.streetAddress'), '') || ' ' || COALESCE(json_extract(object, '$.address.addressLocality'), '') || ' ' || COALESCE(json_extract(object, '$.category'), '') || ' ' || COALESCE(json_extract(object, '$.shout'), '')) as content,
     end_time as occurred_at,
     json_extract(object, '$.url') as url
 FROM events
