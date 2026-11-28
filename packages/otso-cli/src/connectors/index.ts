@@ -2,17 +2,23 @@ import type { Connector } from './types.js';
 import { arena } from './arena.js';
 import { readwise } from './readwise.js';
 import { pinboard } from './pinboard.js';
+import { raindrop } from './raindrop.js';
 import { lastfm } from './lastfm.js';
 import { github } from './github.js';
+import { granola } from './granola.js';
 import { spotify } from './spotify.js';
 import { claude } from './claude.js';
 import { linkedin } from './linkedin.js';
 import { twitter } from './twitter.js';
 import { googleTakeout } from './google-takeout.js';
+import { appleCalendar } from './calendar.js';
 import { gmail } from './gmail.js';
 import { safari, helium, imessage, appleNotes, applePhotos, applePodcasts, things, timing } from './local.js';
 
 import { obsidian, iaWriter } from './markdown.js';
+import { zotero } from './zotero.js';
+import { appleReminders } from './reminders.js';
+import { googleChrome, arc, dia } from './browsers.js';
 
 export type { Connector } from './types.js';
 
@@ -21,8 +27,10 @@ export const CONNECTORS: Connector[] = [
   arena,
   readwise,
   pinboard,
+  raindrop,
   lastfm,
   github,
+  granola,
   // Archive exports
   spotify,
   claude,
@@ -33,6 +41,9 @@ export const CONNECTORS: Connector[] = [
   // Local macOS databases
   safari,
   helium,
+  googleChrome,
+  arc,
+  dia,
   imessage,
   appleNotes,
   applePhotos,
@@ -40,6 +51,9 @@ export const CONNECTORS: Connector[] = [
   things,
   obsidian,
   iaWriter,
+  zotero,
+  appleReminders,
+  appleCalendar,
   timing,
 ];
 
