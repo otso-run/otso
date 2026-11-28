@@ -118,7 +118,7 @@ export async function scheduleCommand(
     console.log(
       `\nSafari, Messages, Notes and Photos need Full Disk Access for the scheduled runs:\n` +
         `  System Settings > Privacy & Security > Full Disk Access > + > ${bun}\n` +
-        `  (press ⌘⇧G in the file picker to paste the path). Helium and the API sources don't need it.`
+        `  (press ⌘⇧G in the file picker to paste the path). Helium, Timing and the API sources don't need it.`
     );
     return;
   }
