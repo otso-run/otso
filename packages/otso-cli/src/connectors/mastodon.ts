@@ -40,12 +40,22 @@ export function statusRow(s: any, kind: Kind, me: string) {
   };
 }
 
-const nextLink = (link: string | null) => link?.match(/<([^>]+)>;\s*rel="next"/)?.[1] ?? null;
+/** The Link header's next page, only if it stays on the instance (the token goes with it). */
+export function nextLink(link: string | null, root: string): string | null {
+  const raw = link?.match(/<([^>]+)>;\s*rel="next"/)?.[1];
+  if (!raw) return null;
+  try {
+    const next = new URL(raw, root);
+    return next.protocol === 'https:' && next.origin === new URL(root).origin ? next.toString() : null;
+  } catch {
+    return null;
+  }
+}
 
-async function getPage(url: string, token: string): Promise<{ items: any[]; next: string | null }> {
+async function getPage(url: string, token: string, root: string): Promise<{ items: any[]; next: string | null }> {
   const res = await request(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) throw new HttpError(res.status, url, await res.text().catch(() => ''));
-  return { items: (await res.json()) as any[], next: nextLink(res.headers.get('link')) };
+  return { items: (await res.json()) as any[], next: nextLink(res.headers.get('link'), root) };
 }
 
 const base = (instance: string) => `https://${instance.replace(/^https?:\/\//, '').replace(/\/+$/, '')}`;
@@ -100,7 +110,7 @@ export const mastodon: Connector = {
     for (const [kind, first] of lists) {
       let url: string | null = first;
       while (url) {
-        const { items, next } = await getPage(url, token);
+        const { items, next } = await getPage(url, token, root);
         const rows = items.map((s) => statusRow(s, kind, me));
         const fresh = rows.filter((r) => !known.get(r.source_id)).length;
         addStats(stats, 'events', store.upsert(EVENTS_TABLE, rows));

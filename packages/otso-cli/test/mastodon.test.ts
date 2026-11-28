@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
+import { nextLink } from '../src/connectors/mastodon.js';
 import { authenticate, runSync } from '../src/core/runner.js';
 import { runTomlQueries, sandbox } from './helpers.js';
 
@@ -54,4 +55,11 @@ test('mastodon: posts, boosts, favourites and bookmarks; stops at the first page
   calls.length = 0;
   await runSync('mastodon');
   expect(calls.filter((c) => c.includes('/statuses'))).toHaveLength(1);
+});
+
+test('mastodon: next links are only followed on the same https origin', () => {
+  const root = 'https://social.example';
+  expect(nextLink('<https://social.example/api/v1/favourites?max_id=1>; rel="next"', root)).toBe('https://social.example/api/v1/favourites?max_id=1');
+  expect(nextLink('<https://evil.example/steal>; rel="next"', root)).toBeNull();
+  expect(nextLink('<http://social.example/api>; rel="next"', root)).toBeNull();
 });
