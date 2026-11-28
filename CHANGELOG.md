@@ -6,6 +6,20 @@ All notable changes to Otso are recorded here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- `otso log` shows recent sync and index runs, then the sources that are failing or slow, with how long each spent copying, reading and writing and any query slower than a second. Every `otso sync` and `otso index` now records a line in `~/.otso/logs/runs.jsonl` with each source's time, counts and errors, never the data itself. [#39](https://github.com/otso-run/otso/pull/39)
+
+### Changed
+
+- `otso index` is several times faster when source databases sit on a network share. A fresh build that took over ten minutes now takes about two, and a routine run with nothing new went from about 50 seconds to about 15. Each source database is copied to `~/.otso/cache/sources` once and reused until it changes, events are written in large batches by one writer at a time, and the search index reads only events added since its last update. [#39](https://github.com/otso-run/otso/pull/39)
+- `otso index` prints a short summary (slowest sources, new search entries, slow queries and failures) instead of a warning for every slow database statement. [#39](https://github.com/otso-run/otso/pull/39)
+
+### Fixed
+
+- A large source no longer fails a fresh `otso index` with "database is locked" when several sources write at once. [#39](https://github.com/otso-run/otso/pull/39)
+- The two mock Twitter accounts used for demo data no longer show up in a real `otso index`; only `otso index --fixtures` builds them. [#39](https://github.com/otso-run/otso/pull/39)
+
 ## [0.2.0] - 2026-11-27
 
 ### Added
