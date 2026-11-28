@@ -56,6 +56,8 @@ export interface Settings {
   sync?: Record<string, boolean>;
   /** Run `otso index` after `otso sync` (default true). */
   indexAfterSync?: boolean;
+  /** Obsidian vault folders to sync; defaults to the vaults Obsidian has open. */
+  obsidianVaults?: string[];
 }
 
 export function readSettings(): Settings {
