@@ -340,7 +340,7 @@ export const SOURCE_METADATA: Record<string, SourceMeta> = {
   'google-takeout': {
     name: 'google-takeout',
     displayName: 'Google Takeout',
-    description: 'Chrome, YouTube, Search, Calendar',
+    description: 'Chrome, YouTube, Search, Calendar, Chat, Voice, Maps, Gemini, Keep and more',
     category: 'browse',
     complexity: 'complex',
     extractionType: 'takeout',

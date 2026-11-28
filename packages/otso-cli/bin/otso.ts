@@ -17,7 +17,8 @@ Typical flow:
   otso sync safari                 read a local macOS database
   otso index                       rebuild the search index from data/sources
   otso schedule install --every 60 sync every hour from this Mac (launchd)
-  otso status                      what's connected and how much is stored`
+  otso status                      what's connected and how much is stored
+  otso log                         recent runs, and slow or failing sources`
   );
 
 program
@@ -68,6 +69,15 @@ program
   .option('--fixtures', 'Index data/fixtures (mock data) instead')
   .option('--fresh', 'Move the current index aside and rebuild it from scratch')
   .action(async (opts) => (await import('../src/commands/cli.js')).indexCommand(opts));
+
+program
+  .command('log')
+  .description('Show recent sync and index runs, and which sources are slow or failing')
+  .option('-n, --limit <runs>', 'How many runs to show', '10')
+  .option('-s, --source <name>', 'One source only')
+  .option('--kind <kind>', 'sync or index')
+  .option('--json', 'Print the log entries as JSON lines')
+  .action(async (opts) => (await import('../src/commands/log.js')).logCommand(opts));
 
 program
   .command('config [action] [key] [value]')
