@@ -18,8 +18,10 @@ import { configuredSourcesDir } from '../core/sources-config.js';
 import { ask } from './prompt.js';
 import { isNetworkPath } from '../core/storage.js';
 import { NotOnThisMacError } from '../connectors/util.js';
+import { SourceBusyError } from '../core/lock.js';
 import { getDeviceName, ShareNotMountedError, slugDevice } from '../core/device.js';
 import { appendRun, summarizeRun, type SourceRun } from '../core/runlog.js';
+import { archive, archivedSources, isArchived, unarchive } from '../core/archived.js';
 
 /**
  * The scriptable commands: everything the TUI does, without the TUI, so
@@ -44,9 +46,14 @@ export async function statusCommand() {
   const kindLabel = { api: 'API', export: 'export', local: 'local' } as const;
   console.log(`${'Source'.padEnd(16)} ${'Type'.padEnd(7)} ${'Login'.padEnd(22)} ${'Rows'.padStart(9)}  Last run`);
   console.log('─'.repeat(76));
+  const archived = archivedSources();
   for (const s of rows) {
     const login = s.connected === null ? '' : s.connected ? `✓ ${s.account ?? ''}`.slice(0, 21) : '✗ run otso auth';
-    const last = s.lastRun ? `${s.lastRun.kind} ${s.lastRun.at.slice(0, 16).replace('T', ' ')}` : '';
+    const last = isArchived(s.id, archived)
+      ? 'archived'
+      : s.lastRun
+        ? `${s.lastRun.kind} ${s.lastRun.at.slice(0, 16).replace('T', ' ')}`
+        : '';
     console.log(
       `${s.id.padEnd(16)} ${kindLabel[s.kind].padEnd(7)} ${login.padEnd(22)} ${String(s.dbExists ? s.rows : '').padStart(9)}  ${last}`
     );
@@ -89,13 +96,24 @@ export async function authCommand(id: string, opts: { logout?: boolean; open?: b
 export async function syncCommand(ids: string[], opts: { full?: boolean; index?: boolean }) {
   // With no names: every connected API, and every local app that's on this
   // Mac and has been synced before (by this Mac or another one).
-  const targets = ids.length
+  const requested = ids.length
     ? ids
     : (await sourceStatuses())
         .filter((s) => (s.kind === 'api' ? s.connected : s.kind === 'local' && s.onThisMac && (s.dbExists || s.syncedAnywhere)))
         .map((s) => s.id);
+  // Archived sources are kept but never synced, even when named
+  const archived = archivedSources();
+  const device = archived.length ? await getDeviceName().catch(() => undefined) : undefined;
+  const skip = (id: string) => isArchived(id, archived) || (!!device && isArchived(`${id}-${device}`, archived));
+  const targets = requested.filter((id) => !skip(id));
+  const skippedArchived = requested.filter(skip);
+  if (skippedArchived.length) {
+    console.log(`Skipping archived: ${skippedArchived.join(', ')} (otso unarchive <source> to sync again)`);
+  }
   if (!targets.length) {
-    console.log('Nothing to sync yet. Connect a service with `otso auth <source>`, or run `otso sync <local source>`.');
+    if (!skippedArchived.length) {
+      console.log('Nothing to sync yet. Connect a service with `otso auth <source>`, or run `otso sync <local source>`.');
+    }
     return;
   }
   let failed = 0;
@@ -124,6 +142,10 @@ export async function syncCommand(ids: string[], opts: { full?: boolean; index?:
       const stored = describeStored(r, id);
       if (stored) console.log(`    ${stored}`);
     } catch (err) {
+      if (err instanceof SourceBusyError) {
+        console.log(`  – skipped: ${err.message}`);
+        continue;
+      }
       if (err instanceof NotOnThisMacError) {
         console.log(`  – skipped: ${err.message}`);
         continue;
@@ -310,5 +332,35 @@ export async function adoptCommand(from: string, opts: { archive?: string; only?
     if (failed.length) process.exitCode = 1;
   } catch (err) {
     fail(err);
+  }
+}
+
+export async function archiveCommand(names: string[]) {
+  if (!names.length) {
+    const list = archivedSources();
+    if (!list.length) {
+      console.log('Nothing archived. Archive a source you no longer use with: otso archive <source>');
+      return;
+    }
+    console.log('Archived (kept and searchable, not synced):');
+    for (const name of list) console.log(`  ${name}`);
+    console.log('\nSync one again with: otso unarchive <source>');
+    return;
+  }
+  const added = await archive(names);
+  for (const name of names) {
+    console.log(added.includes(name) ? `✓ ${name} archived` : `· ${name} was already archived`);
+  }
+  if (added.length) console.log('\nIts data stays in search; otso sync and the scheduled sync will skip it.');
+}
+
+export async function unarchiveCommand(names: string[]) {
+  const removed = await unarchive(names);
+  for (const name of names) {
+    if (removed.includes(name)) console.log(`✓ ${name} will sync again`);
+    else {
+      const covering = archivedSources().find((a) => isArchived(name, [a]));
+      console.log(covering ? `· ${name} is covered by "${covering}"; run otso unarchive ${covering}` : `· ${name} wasn't archived`);
+    }
   }
 }
