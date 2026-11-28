@@ -12,7 +12,7 @@ pnpm otso sources        # from the repo root; or `bun bin/otso.ts …` in this 
 | --- | --- | --- |
 | API | Are.na, Readwise, Pinboard, Last.fm, GitHub | `otso auth <source>` once (the token is verified, then saved to `~/.otso/config`), then `otso sync <source>` whenever you like |
 | Export | Spotify, Claude, LinkedIn, Twitter/X, Google Takeout (plus Pinboard JSON and Last.fm CSV) | `otso ingest <source>` shows how to request the archive and opens the page; when it arrives, `otso ingest <source> ~/Downloads/<file>` |
-| Local | Safari, Helium, Messages, Apple Notes, Apple Photos, Apple Podcasts, Things 3 | `otso sync <source>` reads a temporary copy of the app's database. Safari, Messages, Notes and Photos need Full Disk Access for your terminal |
+| Local | Safari, Helium, Messages, Apple Notes, Apple Photos, Apple Podcasts, Things 3, Timing | `otso sync <source>` reads a temporary copy of the app's database. Safari, Messages, Notes and Photos need Full Disk Access for your terminal |
 
 `otso import` runs the same steps as a guided terminal UI.
 
