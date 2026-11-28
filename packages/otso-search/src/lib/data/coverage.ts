@@ -14,6 +14,8 @@ export interface Lane {
   counts: Int32Array;
   /** Every run of empty days between two active days, longest first */
   gaps: Gap[];
+  /** For a category lane: the sources merged into it */
+  members?: string[];
 }
 
 export interface Gap {
@@ -39,12 +41,7 @@ export function decodeLane(s: {
     d = i === 0 ? s.days[0] : d + s.days[i];
     days[i] = d;
   }
-  const gaps: Gap[] = [];
-  for (let i = 1; i < days.length; i++) {
-    const length = days[i] - days[i - 1] - 1;
-    if (length > 0) gaps.push({ start: days[i - 1] + 1, end: days[i] - 1, length });
-  }
-  gaps.sort((a, b) => b.length - a.length);
+  const gaps = findGaps(days);
   return {
     source: s.source,
     total: s.total,
@@ -54,6 +51,48 @@ export function decodeLane(s: {
     days,
     counts: Int32Array.from(s.counts),
     gaps
+  };
+}
+
+function sortGaps(gaps: Gap[]) {
+  gaps.sort((a, b) => b.length - a.length);
+}
+
+function findGaps(days: Int32Array): Gap[] {
+  const gaps: Gap[] = [];
+  for (let i = 1; i < days.length; i++) {
+    const length = days[i] - days[i - 1] - 1;
+    if (length > 0) gaps.push({ start: days[i - 1] + 1, end: days[i] - 1, length });
+  }
+  sortGaps(gaps);
+  return gaps;
+}
+
+/**
+ * One lane for several sources, e.g. every browser. A day counts as covered
+ * when any of them has a record, so its gaps are times none of them had one.
+ */
+export function mergeLanes(key: string, lanes: Lane[]): Lane {
+  const byDay = new Map<number, number>();
+  for (const lane of lanes) {
+    for (let i = 0; i < lane.days.length; i++) {
+      byDay.set(lane.days[i], (byDay.get(lane.days[i]) ?? 0) + lane.counts[i]);
+    }
+  }
+  const sorted = [...byDay.keys()].sort((a, b) => a - b);
+  const days = Int32Array.from(sorted);
+  const counts = Int32Array.from(sorted, (d) => byDay.get(d)!);
+  const dated = lanes.filter((l) => l.total > 0);
+  return {
+    source: key,
+    total: lanes.reduce((n, l) => n + l.total, 0),
+    undated: lanes.reduce((n, l) => n + l.undated, 0),
+    firstDay: dated.length ? Math.min(...dated.map((l) => l.firstDay)) : 0,
+    lastDay: dated.length ? Math.max(...dated.map((l) => l.lastDay)) : 0,
+    days,
+    counts,
+    gaps: findGaps(days),
+    members: lanes.map((l) => l.source)
   };
 }
 

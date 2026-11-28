@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getSourceInfo, getSourceCategory } from '$lib/data/sources';
+  import { CATEGORIES, getSourceInfo, getSourceCategory } from '$lib/data/sources';
   import {
     type Lane,
     type Gap,
     decodeLane,
+    mergeLanes,
     binLane,
     countBetween,
     axisTicks,
@@ -48,6 +49,10 @@
   let gapThreshold = $state(30);
   let sortMode = $state<SortMode>('records');
   let expanded = $state<Set<string>>(new Set());
+  /** Group sources by the home page's categories (browse, listen, …) */
+  let grouped = $state(true);
+  /** Categories whose sources are listed under their combined lane */
+  let openGroups = $state<Set<string>>(new Set());
   let trackWidth = $state(0);
   let trackEl: HTMLDivElement | null = $state(null);
   let lanesEl: HTMLDivElement | null = $state(null);
@@ -79,6 +84,7 @@
       const saved = JSON.parse(localStorage.getItem('otso.coverage') ?? '{}');
       if (GAP_OPTIONS.some((o) => o.days === saved.gapThreshold)) gapThreshold = saved.gapThreshold;
       if (['records', 'recent', 'stale', 'first', 'name'].includes(saved.sortMode)) sortMode = saved.sortMode;
+      if (typeof saved.grouped === 'boolean') grouped = saved.grouped;
     } catch {
       // Private mode or blocked storage: use the defaults
     }
@@ -88,7 +94,7 @@
   });
 
   $effect(() => {
-    const prefs = JSON.stringify({ gapThreshold, sortMode });
+    const prefs = JSON.stringify({ gapThreshold, sortMode, grouped });
     try {
       localStorage.setItem('otso.coverage', prefs);
     } catch {
@@ -155,9 +161,25 @@
     preset = null;
   }
 
-  let sortedLanes = $derived.by(() => {
-    const out = [...lanes];
-    const label = (l: Lane) => getSourceInfo(l.source).label.toLowerCase();
+  const GROUP_PREFIX = 'category:';
+
+  function laneLabel(lane: Lane): string {
+    if (lane.members) {
+      const key = lane.source.slice(GROUP_PREFIX.length);
+      const label = CATEGORIES[key]?.label ?? key;
+      return label[0].toUpperCase() + label.slice(1);
+    }
+    return getSourceInfo(lane.source).label;
+  }
+
+  function laneColor(lane: Lane): string {
+    if (lane.members) return CATEGORIES[lane.source.slice(GROUP_PREFIX.length)]?.color ?? '#525252';
+    return getSourceCategory(lane.source).color;
+  }
+
+  function sortLanes(list: Lane[]): Lane[] {
+    const out = [...list];
+    const label = (l: Lane) => laneLabel(l).toLowerCase();
     switch (sortMode) {
       case 'recent':
         return out.sort((a, b) => b.lastDay - a.lastDay);
@@ -170,7 +192,56 @@
       default:
         return out.sort((a, b) => b.total - a.total);
     }
+  }
+
+  // A category with two or more sources gets one combined lane
+  let groups = $derived.by(() => {
+    const byCat = new Map<string, Lane[]>();
+    for (const lane of lanes) {
+      const cat = getSourceInfo(lane.source).cat;
+      byCat.set(cat, [...(byCat.get(cat) ?? []), lane]);
+    }
+    return [...byCat.entries()].map(([cat, members]) =>
+      members.length > 1 ? mergeLanes(GROUP_PREFIX + cat, members) : members[0]
+    );
   });
+
+  interface Row {
+    lane: Lane;
+    kind: 'source' | 'group' | 'member';
+  }
+
+  // What's on screen, top to bottom
+  let rows = $derived.by((): Row[] => {
+    if (!grouped) return sortLanes(lanes).map((lane) => ({ lane, kind: 'source' }));
+    const out: Row[] = [];
+    const bySource = new Map(lanes.map((l) => [l.source, l]));
+    for (const lane of sortLanes(groups)) {
+      if (!lane.members) {
+        out.push({ lane, kind: 'source' });
+        continue;
+      }
+      out.push({ lane, kind: 'group' });
+      if (openGroups.has(lane.source)) {
+        for (const m of sortLanes(lane.members.map((s) => bySource.get(s)!))) out.push({ lane: m, kind: 'member' });
+      }
+    }
+    return out;
+  });
+
+  let groupLanes = $derived(groups.filter((g) => g.members));
+  let allOpen = $derived(groupLanes.length > 0 && groupLanes.every((g) => openGroups.has(g.source)));
+
+  function toggleGroup(key: string) {
+    const next = new Set(openGroups);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    openGroups = next;
+  }
+
+  function toggleAllGroups() {
+    openGroups = allOpen ? new Set() : new Set(groupLanes.map((g) => g.source));
+  }
 
   function bigGaps(lane: Lane): Gap[] {
     return lane.gaps.filter((g) => g.length >= gapThreshold);
@@ -215,7 +286,7 @@
     const bins = Math.max(1, Math.min(span, Math.floor(width / cellPx)));
     const dpr = window.devicePixelRatio || 1;
 
-    for (const lane of sortedLanes) {
+    for (const { lane } of rows) {
       const canvas = canvases[lane.source];
       if (!canvas) continue;
       canvas.width = Math.round(width * dpr);
@@ -226,7 +297,7 @@
       ctx.clearRect(0, 0, width, LANE_H);
 
       const x = (day: number) => ((day - start) / span) * width;
-      const color = getSourceCategory(lane.source).color;
+      const color = laneColor(lane);
 
       if (lane.total === 0) {
         drawnBins.set(lane.source, new Float64Array(bins));
@@ -441,6 +512,14 @@
           <option value="name">name</option>
         </select>
       </label>
+      <div class="segmented" role="group" aria-label="Grouping">
+        <button class:active={grouped} aria-pressed={grouped} onclick={() => (grouped = !grouped)}>
+          by category
+        </button>
+        {#if grouped && groupLanes.length}
+          <button onclick={toggleAllGroups}>{allOpen ? 'collapse all' : 'expand all'}</button>
+        {/if}
+      </div>
     </div>
 
     <!-- Shared time axis -->
@@ -464,21 +543,28 @@
     <p class="message">The index has no records yet.</p>
   {:else}
     <div class="lanes" bind:this={lanesEl}>
-      {#each sortedLanes as lane (lane.source)}
-        {@const info = getSourceInfo(lane.source)}
-        {@const color = getSourceCategory(lane.source).color}
+      {#each rows as { lane, kind } (lane.source)}
+        {@const label = laneLabel(lane)}
+        {@const color = laneColor(lane)}
         {@const gaps = bigGaps(lane)}
         {@const stale = staleDays(lane)}
-        {@const open = expanded.has(lane.source)}
-        <div class="lane" class:open>
+        {@const isGroup = kind === 'group'}
+        {@const open = isGroup ? openGroups.has(lane.source) : expanded.has(lane.source)}
+        <div class="lane" class:open class:group={isGroup} class:member={kind === 'member'}>
           <button
             class="lane-label"
             aria-expanded={open}
-            onclick={() => toggleExpanded(lane.source)}
-            title={lane.source}
+            onclick={() => (isGroup ? toggleGroup(lane.source) : toggleExpanded(lane.source))}
+            title={isGroup ? lane.members!.map((s) => getSourceInfo(s).label).join(', ') : lane.source}
           >
-            <span class="icon" style:color>{info.icon}</span>
-            <span class="name">{info.label}</span>
+            {#if isGroup}
+              <span class="icon chevron" style:color>{open ? '▾' : '▸'}</span>
+              <span class="name">{label}</span>
+              <span class="members">{lane.members!.length}</span>
+            {:else}
+              <span class="icon" style:color>{getSourceInfo(lane.source).icon}</span>
+              <span class="name">{label}</span>
+            {/if}
           </button>
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div
@@ -494,7 +580,7 @@
               bind:this={canvases[lane.source]}
               style:width="{trackWidth}px"
               style:height="{LANE_H}px"
-              aria-label="{info.label}: {lane.total} records{gaps.length ? `, ${gaps.length} gaps` : ''}"
+              aria-label="{label}: {lane.total} records{gaps.length ? `, ${gaps.length} gaps` : ''}"
             ></canvas>
           </div>
           <div class="lane-stats">
@@ -511,7 +597,7 @@
             {/if}
           </div>
 
-          {#if open}
+          {#if open && !isGroup}
             <div class="details">
               <div class="facts">
                 {#if lane.total}
@@ -573,14 +659,15 @@
 </div>
 
 {#if hover}
-  {@const info = getSourceInfo(hover.source)}
+  {@const hoverLane = groups.find((g) => g.source === hover?.source) ?? lanes.find((l) => l.source === hover?.source)}
   <div
     class="tooltip"
     role="tooltip"
     style:left="{Math.min(hover.x + 12, (typeof window !== 'undefined' ? window.innerWidth : 9999) - 230)}px"
     style:top="{hover.y + 16}px"
   >
-    <strong>{info.label}</strong>
+    <strong>{hoverLane ? laneLabel(hoverLane) : hover.source}</strong>
+    {#if hoverLane?.members}<span class="muted">any of {hoverLane.members.length} sources</span>{/if}
     <span>{formatRange(hover.start, hover.end)}</span>
     {#if hover.count}
       <span>{hover.count.toLocaleString()} record{hover.count === 1 ? '' : 's'}</span>
@@ -781,6 +868,19 @@
     flex-shrink: 0;
     text-align: center;
     font-size: 12px;
+  }
+
+  .lane-label .members {
+    color: #525252;
+    font-size: 10px;
+  }
+
+  .lanes > .lane.group .lane-label {
+    color: #d4d4d4;
+  }
+
+  .lanes > .lane.member .lane-label {
+    padding-left: 28px;
   }
 
   .lane-label .name {

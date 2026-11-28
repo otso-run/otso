@@ -8,18 +8,26 @@ All notable changes to Otso are recorded here. The format is based on
 
 ### Added
 
+- `otso ingest google-takeout` reads much more of a Google Takeout: Google Chat messages, Google Voice texts, calls and voicemail transcripts, Maps starred places, reviews, saved lists and Timeline visits, Gemini prompts and replies, NotebookLM notebooks, Keep notes, Contacts, Blogger posts and comments, Google Groups messages, every other My Activity product, and Google Photos metadata (titles, descriptions, people, albums and places, never the photos themselves). Each gets its own search source. Unzip all the parts into one folder and pass the folder. [#42](https://github.com/otso-run/otso/pull/42)
+- `otso ingest gmail` reads the Mail mbox from a Takeout as its own source. The mailbox is streamed, so a mailbox of tens of GB is fine; subjects, people, message text, attachment names and labels are searchable, spam is left out, and each result opens the message in Gmail. [#42](https://github.com/otso-run/otso/pull/42)
 - Readwise Reader documents keep their full article text, and search finds words from the body, not just the title and summary. Results also show the author, site, published date, reading time, tags, notes, reading progress and when you saved and last opened each one. The first sync after upgrading fetches every Reader document once to fill this in. [#38](https://github.com/otso-run/otso/pull/38)
 - A Coverage page in Otso Search (`/coverage`) lines up every source on one time axis, so you can see where each archive starts, where it has gaps and which sources have gone quiet. Choose the smallest gap worth flagging, drag to zoom, and open a source's longest gaps or jump to it in search. It works on phones too. [#41](https://github.com/otso-run/otso/pull/41)
-- `otso sync timing` reads app and document usage from the Timing app's database, so Timing stays current instead of stopping where the Chronicle import ended. It continues an existing Timing archive from its newest entry rather than reading the whole history again, re-reads the last week each run to pick up project changes, and removes entries deleted in Timing. No Full Disk Access needed.
+- The Coverage page groups sources by the same categories as search, so all browsers or all music services share one lane that only shows a gap when none of them had anything. Select a group to see its sources, or turn grouping off with **by category**. [#43](https://github.com/otso-run/otso/pull/43)
+- `otso log` shows recent sync and index runs, then the sources that are failing or slow, with how long each spent copying, reading and writing and any query slower than a second. Every `otso sync` and `otso index` now records a line in `~/.otso/logs/runs.jsonl` with each source's time, counts and errors, never the data itself. [#39](https://github.com/otso-run/otso/pull/39)
+- `otso sync timing` reads app and document usage from the Timing app's database, so Timing stays current instead of stopping where the Chronicle import ended. It continues an existing Timing archive from its newest entry rather than reading the whole history again, re-reads the last week each run to pick up project changes, and removes entries deleted in Timing. No Full Disk Access needed. [#44](https://github.com/otso-run/otso/pull/44)
 
 ### Changed
 
 - `otso index` picks up edited rows. When a source row changes, or a `sources.toml` query starts selecting more, its search entry is replaced on the next build, so `otso index --fresh` is no longer needed after changing a query. Queries can also return a `metadata` JSON column that shows in the result detail. [#38](https://github.com/otso-run/otso/pull/38)
+- `otso index` is several times faster when source databases sit on a network share. A fresh build that took over ten minutes now takes about two, and a routine run with nothing new went from about 50 seconds to about 15. Each source database is copied to `~/.otso/cache/sources` once and reused until it changes, events are written in large batches by one writer at a time, and the search index reads only the events it doesn't have yet. [#39](https://github.com/otso-run/otso/pull/39)
+- `otso index` prints a short summary (slowest sources, new search entries, slow queries and failures) instead of a warning for every slow database statement. [#39](https://github.com/otso-run/otso/pull/39)
 
 ### Fixed
 
 - Events from an indexer run that was interrupted part way come back on the next `otso index`. Before, they were dropped from the event store for good. [#38](https://github.com/otso-run/otso/pull/38)
 - Reader syncs wait out Readwise's rate limit instead of failing part way through a large pull. [#38](https://github.com/otso-run/otso/pull/38)
+- A large source no longer fails a fresh `otso index` with "database is locked" when several sources write at once. [#39](https://github.com/otso-run/otso/pull/39)
+- The two mock Twitter accounts used for demo data no longer show up in a real `otso index`; only `otso index --fixtures` builds them. [#39](https://github.com/otso-run/otso/pull/39)
 
 ## [0.2.0] - 2026-11-27
 

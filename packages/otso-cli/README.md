@@ -11,7 +11,7 @@ pnpm otso sources        # from the repo root; or `bun bin/otso.ts …` in this 
 | Kind | Sources | What you do |
 | --- | --- | --- |
 | API | Are.na, Readwise, Pinboard, Last.fm, GitHub | `otso auth <source>` once (the token is verified, then saved to `~/.otso/config`), then `otso sync <source>` whenever you like |
-| Export | Spotify, Claude, LinkedIn, Twitter/X, Google Takeout (plus Pinboard JSON and Last.fm CSV) | `otso ingest <source>` shows how to request the archive and opens the page; when it arrives, `otso ingest <source> ~/Downloads/<file>` |
+| Export | Spotify, Claude, LinkedIn, Twitter/X, Google Takeout, Gmail (plus Pinboard JSON and Last.fm CSV) | `otso ingest <source>` shows how to request the archive and opens the page; when it arrives, `otso ingest <source> ~/Downloads/<file>` |
 | Local | Safari, Helium, Messages, Apple Notes, Apple Photos, Apple Podcasts, Things 3, Timing | `otso sync <source>` reads a temporary copy of the app's database. Safari, Messages, Notes and Photos need Full Disk Access for your terminal |
 
 `otso import` runs the same steps as a guided terminal UI.
@@ -21,6 +21,36 @@ Coming from chronicle-etl? `otso migrate chronicle` reads `~/.config/chronicle/e
 `otso adopt chronicle --archive <chronicle data folder>` copies an existing Chronicle archive into sources-dir, rewriting each row's id to the one otso's connector would produce (repeated rows collapse to one; sources without a connector are copied as they are). The archive is opened read-only. Afterwards, `otso index --fresh` rebuilds the index, and later syncs and imports add only what's new.
 
 Every run is idempotent: rows are upserted on a stable id (Are.na block id, Readwise highlight id, Spotify timestamp + track, and so on), so syncing or re-importing the same archive twice changes nothing. API syncs are incremental. Readwise asks for highlights updated since the last sync, Last.fm for scrobbles after the newest stored one, Pinboard skips the download when `posts/update` is unchanged, and Are.na only re-reads channels whose `updated_at` moved. `--full` ignores those cursors.
+
+### Google Takeout
+
+A Takeout arrives as many zips. Unzip them all into one folder (the parts merge into a single `Takeout/` tree) and give otso the folder, which also skips keeping a copy of a many-GB archive:
+
+```bash
+otso ingest google-takeout ~/takeout-extracted   # everything below except Mail
+otso ingest gmail ~/takeout-extracted            # Takeout/Mail/*.mbox, streamed
+```
+
+| Takeout product | otso source | What's indexed |
+| --- | --- | --- |
+| My Activity → Search | `google-search` | searches |
+| Chrome | `chrome` | browser history |
+| YouTube and YouTube Music | `youtube` | watch history |
+| Calendar | `gcal` | events from every `.ics` |
+| Mail | `gmail` (own db) | subject, people, text (32 KB cap), attachment names, labels; spam is left out of search |
+| Google Chat | `google-chat` | one entry per message, titled with sender and space or DM |
+| Voice | `google-voice` | texts, calls and voicemail transcripts |
+| Maps (your places), Maps, Saved, Timeline | `google-maps` | starred places, reviews, labeled places, saved lists, Timeline visits |
+| My Activity → Gemini Apps | `gemini` | prompts and replies |
+| NotebookLM, Gemini | `notebooklm` | notes, chats and text sources per notebook; Gems |
+| My Activity, other products | `google-activity` | Maps, Discover, Image Search, Play, News and so on (Search, Chrome, YouTube and Ads are covered elsewhere or skipped) |
+| Keep | `google-keep` | notes and checklists, not trashed ones |
+| Contacts | `google-contacts` | one entry per person, with their groups |
+| Blogger | `blogger` | posts, pages and comments, drafts included |
+| Groups | `google-groups` | messages from any `.mbox` under `Groups/` |
+| Google Photos | `googlephotos` | the JSON sidecars only: title, description, people, albums, place. Photos and videos are never read, so the media can be left out when unzipping |
+
+Choose JSON for My Activity under "Multiple formats"; the HTML version can't be read. Drive file contents aren't imported. Things without a date of their own (saved lists, labeled places, NotebookLM files, most contacts) are dated by their file time in the export.
 
 ## Where things go
 
@@ -63,6 +93,18 @@ Each `chronicle.db` has the tables the `sources.toml` queries read, plus an `_ot
 ## Indexing
 
 `otso index` runs `packages/otso-indexer` with `--sources-dir data/sources`, so it reads the real data even though `sources.toml` defaults to `data/fixtures`. It appends new events to `data/otso/events.db` and adds only those to `search.db`, the index otso-search reads, so a routine run takes seconds. `otso index --fresh` starts both over (needed only after ids change, e.g. after `otso adopt`). `otso index --fixtures` indexes the mock data instead. Build the indexer once with `cargo build --release` in `packages/otso-indexer`; without that build it falls back to `cargo run`.
+
+When `sources-dir` is on a network share, the indexer copies each source database to `~/.otso/cache/sources` and reads the copy, which is much faster than querying SQLite over SMB. A copy is reused until its source changes, so a routine run only copies the sources that synced since. Sources marked `fixture = true` in `sources.toml` (the mock Twitter accounts) are built only by `otso index --fixtures`.
+
+## Run log
+
+Every `otso sync` and `otso index` adds a line to `~/.otso/logs/runs.jsonl` with each source's time, row counts and errors, and for index runs the time spent copying, reading and writing each source and any query slower than a second. The log holds names, counts, timings and error messages, never the data itself. `otso index` prints a short summary instead of every slow statement, and `otso log` shows recent runs and the sources that are slow or failing:
+
+```bash
+pnpm otso log                   # last 10 runs, then slow or failing sources
+pnpm otso log --source lastfm   # one source over time
+pnpm otso log --kind sync -n 30 --json
+```
 
 ## Running on a schedule
 
