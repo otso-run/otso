@@ -11,6 +11,8 @@ import { twitter } from './twitter.js';
 import { googleTakeout } from './google-takeout.js';
 import { safari, helium, imessage, appleNotes, applePhotos, applePodcasts, things } from './local.js';
 
+import { obsidian, iaWriter } from './markdown.js';
+
 export type { Connector } from './types.js';
 
 export const CONNECTORS: Connector[] = [
@@ -34,6 +36,8 @@ export const CONNECTORS: Connector[] = [
   applePhotos,
   applePodcasts,
   things,
+  obsidian,
+  iaWriter,
 ];
 
 export function getConnector(id: string): Connector | undefined {

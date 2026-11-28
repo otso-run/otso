@@ -360,6 +360,50 @@ SELECT
 FROM events
 """
 
+# Obsidian vaults (settings.obsidianVaults, else the vaults Obsidian has open).
+[[sources]]
+name = "obsidian"
+enabled = true
+db_path = "obsidian/chronicle/chronicle.db"
+category = "notes"
+
+[[sources.queries]]
+table = "events"
+entry_type = "note"
+action_type = "CreateAction"
+object_type = "NoteDigitalDocument"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    TRIM(COALESCE(text, '') || ' ' || COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.keywords')) k), '')) as content,
+    dateCreated as occurred_at,
+    NULL as url
+FROM events
+"""
+
+# iA Writer's iCloud library.
+[[sources]]
+name = "ia-writer"
+enabled = true
+db_path = "ia-writer/chronicle/chronicle.db"
+category = "notes"
+
+[[sources.queries]]
+table = "events"
+entry_type = "note"
+action_type = "CreateAction"
+object_type = "NoteDigitalDocument"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    TRIM(COALESCE(text, '') || ' ' || COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.keywords')) k), '')) as content,
+    dateCreated as occurred_at,
+    NULL as url
+FROM events
+"""
+
 [[sources]]
 name = "notion"
 enabled = true

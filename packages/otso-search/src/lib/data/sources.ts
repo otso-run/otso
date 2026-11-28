@@ -82,6 +82,7 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
   'apple-notes': { label: 'Notes', cat: 'note', icon: '✏️' },
   'notion': { label: 'Notion', cat: 'note', icon: '▪' },
   'obsidian': { label: 'Obsidian', cat: 'note', icon: '◈' },
+  'ia-writer': { label: 'iA Writer', cat: 'note', icon: '✍' },
   'remarkable': { label: 'reMarkable', cat: 'note', icon: '✎' },
   'devonthink': { label: 'DEVONthink', cat: 'note', icon: '🗄' },
 
