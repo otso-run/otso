@@ -15,6 +15,13 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      testIgnore: /mobile\.spec\.ts/,
+    },
+    {
+      // Phone layout, run in Chromium with an iPhone viewport and touch
+      name: 'mobile',
+      use: { ...devices['iPhone 15 Pro'], browserName: 'chromium' },
+      testMatch: /mobile\.spec\.ts/,
     },
   ],
   webServer: {
