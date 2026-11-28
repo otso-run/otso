@@ -18,6 +18,7 @@ Typical flow:
   otso index                       rebuild the search index from data/sources
   otso schedule install --every 60 sync every hour from this Mac (launchd)
   otso status                      what's connected and how much is stored
+  otso archive foursquare          stop syncing a source you no longer use (its data stays)
   otso log                         recent runs, and slow or failing sources`
   );
 
@@ -113,6 +114,16 @@ program
       process.exit(1);
     }
   });
+
+program
+  .command('archive [sources...]')
+  .description("Mark sources you no longer use: their data stays searchable, but sync skips them. With no names, lists them")
+  .action(async (sources) => (await import('../src/commands/cli.js')).archiveCommand(sources));
+
+program
+  .command('unarchive <sources...>')
+  .description('Sync archived sources again')
+  .action(async (sources) => (await import('../src/commands/cli.js')).unarchiveCommand(sources));
 
 program
   .command('search')
