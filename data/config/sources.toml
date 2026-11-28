@@ -36,6 +36,31 @@ FROM events WHERE type = 'BookmarkAction'
 """
 
 [[sources]]
+name = "raindrop"
+enabled = true
+db_path = "raindrop/chronicle/chronicle.db"
+category = "reading"
+
+[[sources.queries]]
+table = "events"
+entry_type = "bookmark"
+action_type = "BookmarkAction"
+object_type = "WebPage"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.name') as title,
+    TRIM(COALESCE(json_extract(object, '$.description'), '') || ' ' || COALESCE(json_extract(object, '$.note'), '') || ' ' ||
+      COALESCE((SELECT group_concat(json_extract(h.value, '$.text') || COALESCE(' ' || json_extract(h.value, '$.note'), ''), ' ')
+                FROM json_each(json_extract(object, '$.highlights')) h), '') || ' ' ||
+      COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.keywords')) k), '') || ' ' ||
+      COALESCE(json_extract(result, '$.name'), '')) as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events WHERE type = 'BookmarkAction'
+"""
+
+[[sources]]
 name = "readwise"
 enabled = true
 db_path = "readwise/chronicle/chronicle.db"
