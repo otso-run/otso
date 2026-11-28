@@ -1,4 +1,6 @@
 use anyhow::Result;
+use std::path::{Path, PathBuf};
+use std::time::Instant;
 use uuid::Uuid;
 
 use crate::config::SourceConfig;
@@ -7,26 +9,78 @@ use crate::event_store::{Event, EventType};
 mod sqlite;
 mod timestamp;
 
+/// Timings and counts from reading one source, for the run report.
+#[derive(Debug, Default, Clone, serde::Serialize)]
+pub struct ExtractReport {
+    /// Rows the queries returned (before aggregation).
+    pub rows: usize,
+    /// The database wasn't there (source not imported yet).
+    pub missing: bool,
+    /// Time spent refreshing the local copy, when one was made.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub copy_ms: Option<u64>,
+    /// true when the local copy was already current and reused.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub copy_reused: bool,
+    pub read_ms: u64,
+    pub queries: Vec<QueryTiming>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct QueryTiming {
+    pub entry_type: String,
+    pub rows: usize,
+    pub ms: u64,
+}
+
 /// Extract events from a source based on its configuration
 ///
-/// `source_data_dir` is the base directory for source databases (e.g., "data/fixtures" or "data/sources")
-pub async fn extract(source_data_dir: &str, source_config: &SourceConfig) -> Result<Vec<Event>> {
+/// `source_data_dir` is the base directory for source databases (e.g., "data/fixtures" or "data/sources").
+/// With `local_copy_dir`, each database is first copied there (and reused
+/// while the original is unchanged), then read from the copy.
+pub async fn extract(
+    source_data_dir: &str,
+    source_config: &SourceConfig,
+    local_copy_dir: Option<&Path>,
+) -> Result<(Vec<Event>, ExtractReport)> {
     let mut all_events = Vec::new();
+    let mut report = ExtractReport::default();
 
     // Get the database path
     let db_path = match &source_config.db_path {
-        Some(path) => format!("{}/{}", source_data_dir, path),
+        Some(path) => PathBuf::from(format!("{}/{}", source_data_dir, path)),
         None => {
             tracing::warn!("No db_path for source {}, skipping", source_config.name);
-            return Ok(vec![]);
+            return Ok((vec![], report));
         }
     };
 
     // Check if database exists
-    if !std::path::Path::new(&db_path).exists() {
-        tracing::warn!("Database not found: {}", db_path);
-        return Ok(vec![]);
+    if !db_path.exists() {
+        tracing::warn!("Database not found: {}", db_path.display());
+        report.missing = true;
+        return Ok((vec![], report));
     }
+
+    let (read_path, immutable) = match local_copy_dir {
+        Some(dir) => {
+            let started = Instant::now();
+            match local_copy(&db_path, &dir.join(&source_config.name)).await? {
+                Some((copy, reused)) => {
+                    report.copy_reused = reused;
+                    if !reused {
+                        report.copy_ms = Some(started.elapsed().as_millis() as u64);
+                    }
+                    (copy, true)
+                }
+                None => (db_path.clone(), false),
+            }
+        }
+        None => (db_path.clone(), false),
+    };
+
+    let read_started = Instant::now();
+    let pool = sqlite::open_source(&read_path, immutable).await?;
 
     // Execute each query
     for query in &source_config.queries {
@@ -36,23 +90,80 @@ pub async fn extract(source_data_dir: &str, source_config: &SourceConfig) -> Res
             query.entry_type
         );
 
+        let started = Instant::now();
         let events = sqlite::extract_from_sqlite(
-            &db_path,
+            &pool,
             &source_config.name,
             query,
             source_config.visibility.as_deref(),
         )
         .await?;
+        report.queries.push(QueryTiming {
+            entry_type: query.entry_type.clone(),
+            rows: events.len(),
+            ms: started.elapsed().as_millis() as u64,
+        });
+        report.rows += events.len();
 
         all_events.extend(events);
     }
+    pool.close().await;
+    report.read_ms = read_started.elapsed().as_millis() as u64;
 
     // Apply aggregation if configured
     if let Some(ref agg_config) = source_config.aggregation {
         all_events = aggregate_events(all_events, agg_config)?;
     }
 
-    Ok(all_events)
+    Ok((all_events, report))
+}
+
+/// Copy a source database into `dir` and return the copy's path, reusing an
+/// earlier copy while the original's size and modification time are the same
+/// (the bool says whether it was reused).
+///
+/// Reading SQLite over SMB is a round trip per page read and per lock, so one
+/// sequential copy is much faster than querying the share directly, and an
+/// unchanged source costs nothing on the next run. Returns None (read the
+/// original) when a -wal or -journal file sits beside it: the database is
+/// mid-write or in WAL mode, and a copy of the main file alone could be stale.
+pub async fn local_copy(src: &Path, dir: &Path) -> Result<Option<(PathBuf, bool)>> {
+    let sidecar = |ext: &str| {
+        let mut p = src.as_os_str().to_owned();
+        p.push(ext);
+        PathBuf::from(p)
+    };
+    if sidecar("-wal").exists() || sidecar("-journal").exists() {
+        return Ok(None);
+    }
+
+    let meta = tokio::fs::metadata(src).await?;
+    let mtime = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let stamp = format!("{}:{}", meta.len(), mtime);
+
+    let copy = dir.join("chronicle.db");
+    let stamp_file = dir.join("source.stamp");
+    if copy.exists() {
+        if let Ok(previous) = tokio::fs::read_to_string(&stamp_file).await {
+            if previous.trim() == stamp {
+                return Ok(Some((copy, true)));
+            }
+        }
+    }
+
+    tokio::fs::create_dir_all(dir).await?;
+    // The stamp is the state before copying, so a source that changes
+    // mid-copy no longer matches it and is copied again next run.
+    let partial = dir.join(format!("chronicle.db.partial-{}", std::process::id()));
+    tokio::fs::copy(src, &partial).await?;
+    tokio::fs::rename(&partial, &copy).await?;
+    tokio::fs::write(&stamp_file, &stamp).await?;
+    Ok(Some((copy, false)))
 }
 
 /// Aggregate events based on configuration
@@ -331,6 +442,29 @@ fn aggregate_events(
 
 #[cfg(test)]
 mod tests {
+
+    #[tokio::test]
+    async fn local_copy_is_reused_until_the_source_changes() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let src = dir.path().join("chronicle.db");
+        std::fs::write(&src, b"first").unwrap();
+        let cache = dir.path().join("cache").join("src");
+
+        let (copy, reused) = local_copy(&src, &cache).await.unwrap().unwrap();
+        assert!(!reused);
+        assert_eq!(std::fs::read(&copy).unwrap(), b"first");
+        assert!(local_copy(&src, &cache).await.unwrap().unwrap().1);
+
+        std::fs::write(&src, b"second, longer").unwrap();
+        let (copy, reused) = local_copy(&src, &cache).await.unwrap().unwrap();
+        assert!(!reused);
+        assert_eq!(std::fs::read(&copy).unwrap(), b"second, longer");
+
+        // Mid-write (a hot journal beside it): read the original instead.
+        std::fs::write(dir.path().join("chronicle.db-journal"), b"").unwrap();
+        assert!(local_copy(&src, &cache).await.unwrap().is_none());
+    }
+
     use super::*;
     use crate::config::{AggregationConfig, AggregationStrategy};
     use crate::event_store::Visibility;

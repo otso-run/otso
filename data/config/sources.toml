@@ -705,6 +705,8 @@ FROM blocks
 [[sources]]
 name = "twitter-mockuser"
 enabled = true
+# Mock account in data/fixtures: only `otso index --fixtures` builds it.
+fixture = true
 db_path = "twitter-mockuser/chronicle/chronicle.db"
 category = "social"
 
@@ -741,6 +743,8 @@ FROM likes
 [[sources]]
 name = "twitter-testaccount"
 enabled = true
+# Mock account in data/fixtures: only `otso index --fixtures` builds it.
+fixture = true
 db_path = "twitter-testaccount/chronicle/chronicle.db"
 category = "social"
 
@@ -860,4 +864,327 @@ SELECT
     startDate as occurred_at,
     NULL as url
 FROM calendar
+"""
+
+# Google Chat: one row per message. The title names the sender and the
+# space or DM, so a search result says who said it where.
+[[sources]]
+name = "google-chat"
+enabled = true
+db_path = "google-takeout/chronicle/chronicle.db"
+category = "comms"
+
+[[sources.queries]]
+table = "google_chat"
+entry_type = "message"
+action_type = "SendAction"
+object_type = "Message"
+sql = """
+SELECT
+    source_id as external_id,
+    sender || ' · ' || conversation as title,
+    TRIM(COALESCE(text, '') || ' ' || COALESCE((SELECT group_concat(value, ' ') FROM json_each(attachments)), '')) as content,
+    startTime as occurred_at,
+    NULL as url,
+    json_object('sender', sender, 'conversation', conversation, 'attachments', json(attachments)) as metadata
+FROM google_chat
+"""
+
+# Google Voice: texts (one row per message) and calls; a voicemail's
+# transcript is its content.
+[[sources]]
+name = "google-voice"
+enabled = true
+db_path = "google-takeout/chronicle/chronicle.db"
+category = "comms"
+
+[[sources.queries]]
+table = "google_voice"
+entry_type = "message"
+action_type = "SendAction"
+object_type = "Message"
+sql = """
+SELECT
+    source_id as external_id,
+    name || CASE WHEN conversation <> name THEN ' · ' || conversation ELSE '' END as title,
+    COALESCE(text, '') as content,
+    startTime as occurred_at,
+    NULL as url,
+    json_object('number', number, 'conversation', conversation) as metadata
+FROM google_voice WHERE kind = 'text'
+"""
+
+[[sources.queries]]
+table = "google_voice"
+entry_type = "call"
+action_type = "CommunicateAction"
+object_type = "PhoneCall"
+sql = """
+SELECT
+    source_id as external_id,
+    upper(substr(kind, 1, 1)) || substr(kind, 2) || ' call: ' || name as title,
+    COALESCE(text, '') as content,
+    startTime as occurred_at,
+    NULL as url,
+    json_object('kind', kind, 'number', number, 'duration_seconds', duration) as metadata
+FROM google_voice WHERE kind <> 'text'
+"""
+
+# Places: starred places and reviews, Maps labeled places, Saved lists
+# and Timeline visits. Lists with no dates are dated by the export.
+[[sources]]
+name = "google-maps"
+enabled = true
+db_path = "google-takeout/chronicle/chronicle.db"
+category = "travel"
+
+[[sources.queries]]
+table = "google_places"
+entry_type = "place"
+action_type = "ArriveAction"
+object_type = "Place"
+sql = """
+SELECT
+    source_id as external_id,
+    CASE kind
+        WHEN 'visit' THEN 'Visited ' || name
+        WHEN 'review' THEN 'Reviewed ' || name
+        ELSE name || ' (' || list || ')' END as title,
+    TRIM(COALESCE(address, '') || ' ' || COALESCE(note, '')) as content,
+    startTime as occurred_at,
+    url,
+    json_object('kind', kind, 'list', list, 'lat', lat, 'lng', lng, 'until', endTime) as metadata
+FROM google_places
+"""
+
+[[sources]]
+name = "gemini"
+enabled = true
+db_path = "google-takeout/chronicle/chronicle.db"
+category = "ai"
+
+[[sources.queries]]
+table = "gemini"
+entry_type = "conversation"
+action_type = "CommunicateAction"
+object_type = "Conversation"
+sql = """
+SELECT
+    source_id as external_id,
+    substr(prompt, 1, 200) as title,
+    TRIM(prompt || char(10) || COALESCE(response, '')) as content,
+    startTime as occurred_at,
+    NULL as url
+FROM gemini
+"""
+
+# Every My Activity product without a table of its own (Maps, Discover,
+# Image Search, Play Store, News, Books, ...). Search, Chrome, YouTube,
+# Gemini and Ads are skipped at import.
+[[sources]]
+name = "google-activity"
+enabled = true
+db_path = "google-takeout/chronicle/chronicle.db"
+category = "browse"
+
+[[sources.queries]]
+table = "google_activity"
+entry_type = "activity"
+action_type = "ViewAction"
+object_type = "Thing"
+sql = """
+SELECT
+    source_id as external_id,
+    title,
+    TRIM(product || ' ' || COALESCE(details, '')) as content,
+    startTime as occurred_at,
+    url,
+    json_object('product', product) as metadata
+FROM google_activity
+"""
+
+# Text files from NotebookLM notebooks (notes, chats, text sources) and
+# from the Gemini product folder (Gems).
+[[sources]]
+name = "notebooklm"
+enabled = true
+db_path = "google-takeout/chronicle/chronicle.db"
+category = "ai"
+
+[[sources.queries]]
+table = "google_documents"
+entry_type = "document"
+action_type = "CreateAction"
+object_type = "DigitalDocument"
+sql = """
+SELECT
+    source_id as external_id,
+    name || ' (' || collection || ')' as title,
+    COALESCE(text, '') as content,
+    startTime as occurred_at,
+    NULL as url,
+    json_object('product', product, 'path', path) as metadata
+FROM google_documents
+"""
+
+[[sources]]
+name = "google-keep"
+enabled = true
+db_path = "google-takeout/chronicle/chronicle.db"
+category = "note"
+
+[[sources.queries]]
+table = "google_keep"
+entry_type = "note"
+action_type = "CreateAction"
+object_type = "Note"
+sql = """
+SELECT
+    source_id as external_id,
+    CASE WHEN COALESCE(title, '') = '' THEN substr(COALESCE(text, 'Note'), 1, 80) ELSE title END as title,
+    TRIM(
+        COALESCE(text, '') || ' ' ||
+        COALESCE((SELECT group_concat(json_extract(value, '$.title') || ' ' || json_extract(value, '$.url'), ' ') FROM json_each(links)), '')
+    ) as content,
+    created as occurred_at,
+    NULL as url,
+    json_object('labels', json(labels), 'pinned', pinned, 'archived', archived, 'edited', edited) as metadata
+FROM google_keep
+"""
+
+# Contacts have no event date; they are dated by their last change (REV)
+# or by the export.
+[[sources]]
+name = "google-contacts"
+enabled = true
+db_path = "google-takeout/chronicle/chronicle.db"
+category = "comms"
+
+[[sources.queries]]
+table = "google_contacts"
+entry_type = "contact"
+action_type = "UpdateAction"
+object_type = "Person"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    TRIM(
+        COALESCE((SELECT group_concat(value, ' ') FROM json_each(emails)), '') || ' ' ||
+        COALESCE((SELECT group_concat(value, ' ') FROM json_each(phones)), '') || ' ' ||
+        COALESCE(org, '') || ' ' || COALESCE(title, '') || ' ' || COALESCE(note, '')
+    ) as content,
+    updated as occurred_at,
+    NULL as url,
+    json_object('org', org, 'title', title, 'birthday', birthday, 'groups', json(groups)) as metadata
+FROM google_contacts
+"""
+
+[[sources]]
+name = "blogger"
+enabled = true
+db_path = "google-takeout/chronicle/chronicle.db"
+category = "social"
+
+[[sources.queries]]
+table = "blogger"
+entry_type = "post"
+action_type = "CreateAction"
+object_type = "BlogPosting"
+sql = """
+SELECT
+    source_id as external_id,
+    CASE WHEN COALESCE(title, '') = '' THEN substr(COALESCE(text, ''), 1, 80) ELSE title END ||
+        CASE kind WHEN 'comment' THEN ' (comment on ' || blog || ')' ELSE ' (' || blog || ')' END as title,
+    COALESCE(text, '') as content,
+    COALESCE(published, updated) as occurred_at,
+    url,
+    json_object('blog', blog, 'kind', kind, 'status', status, 'author', author) as metadata
+FROM blogger
+"""
+
+[[sources]]
+name = "google-groups"
+enabled = true
+db_path = "google-takeout/chronicle/chronicle.db"
+category = "comms"
+
+[[sources.queries]]
+table = "google_groups"
+entry_type = "email"
+action_type = "SendAction"
+object_type = "EmailMessage"
+sql = """
+SELECT
+    source_id as external_id,
+    CASE WHEN COALESCE(subject, '') = '' THEN '(no subject)' ELSE subject END || ' (' || mailbox || ')' as title,
+    TRIM('From: ' || COALESCE(sender, '') || char(10) || COALESCE(body, '')) as content,
+    date as occurred_at,
+    NULL as url,
+    json_object('group', mailbox, 'from', sender) as metadata
+FROM google_groups
+"""
+
+# Google Photos metadata only (titles, descriptions, people, albums,
+# places); the photos themselves stay in the archive.
+[[sources]]
+name = "googlephotos"
+enabled = true
+db_path = "google-takeout/chronicle/chronicle.db"
+category = "photo"
+
+[[sources.queries]]
+table = "google_photos"
+entry_type = "photo"
+action_type = "CreateAction"
+object_type = "Photograph"
+sql = """
+SELECT
+    source_id as external_id,
+    title,
+    TRIM(
+        COALESCE(description, '') || ' ' ||
+        COALESCE((SELECT group_concat(value, ' ') FROM json_each(people)), '') || ' ' ||
+        COALESCE((SELECT group_concat(value, ' ') FROM json_each(albums)), '')
+    ) as content,
+    COALESCE(takenTime, createdTime) as occurred_at,
+    url,
+    json_object('people', json(people), 'albums', json(albums), 'lat', lat, 'lng', lng) as metadata
+FROM google_photos
+"""
+
+# ============================================================================
+# GMAIL (Takeout Mail mbox; its own db because mailboxes are large)
+# ============================================================================
+
+# Spam is left out of the index. The link opens the message in Gmail by
+# its Message-ID, which works whatever the thread looks like now.
+[[sources]]
+name = "gmail"
+enabled = true
+db_path = "gmail/chronicle/chronicle.db"
+category = "comms"
+
+[[sources.queries]]
+table = "messages"
+entry_type = "email"
+action_type = "SendAction"
+object_type = "EmailMessage"
+sql = """
+SELECT
+    source_id as external_id,
+    CASE WHEN COALESCE(subject, '') = '' THEN '(no subject)' ELSE subject END as title,
+    TRIM(
+        'From: ' || COALESCE(sender, '') || char(10) ||
+        'To: ' || COALESCE(recipients, '') || char(10) ||
+        COALESCE(body, '') || char(10) ||
+        COALESCE((SELECT group_concat(value, ' ') FROM json_each(attachments)), '')
+    ) as content,
+    date as occurred_at,
+    CASE WHEN message_id IS NOT NULL
+        THEN 'https://mail.google.com/mail/u/0/#search/rfc822msgid%3A' || replace(replace(replace(message_id, '%', '%25'), '+', '%2B'), '@', '%40')
+    END as url,
+    json_object('from', sender, 'to', recipients, 'cc', cc, 'labels', labels, 'attachments', json(attachments)) as metadata
+FROM messages
+WHERE ',' || COALESCE(labels, '') || ',' NOT LIKE '%,Spam,%'
 """
