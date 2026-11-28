@@ -53,6 +53,9 @@
   let grouped = $state(true);
   /** Categories whose sources are listed under their combined lane */
   let openGroups = $state<Set<string>>(new Set());
+  /** Sources marked as no longer in use (shared with `otso archive`) */
+  let archivedList = $state<string[]>([]);
+  let archiveError = $state<string | null>(null);
   let trackWidth = $state(0);
   let trackEl: HTMLDivElement | null = $state(null);
   let lanesEl: HTMLDivElement | null = $state(null);
@@ -104,7 +107,11 @@
 
   async function load() {
     try {
-      const res = await fetch('/api/coverage');
+      const [res, arch] = await Promise.all([
+        fetch('/api/coverage'),
+        fetch('/api/archived').then((r) => (r.ok ? r.json() : { archived: [] })).catch(() => ({ archived: [] }))
+      ]);
+      archivedList = arch.archived ?? [];
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       lanes = data.sources.map(decodeLane);
@@ -162,8 +169,35 @@
   }
 
   const GROUP_PREFIX = 'category:';
+  const ARCHIVED_KEY = 'archived:all';
+
+  function isArchived(name: string): boolean {
+    return archivedList.some((a) => name === a || name.startsWith(`${a}-`));
+  }
+
+  /** Is this lane, or every source in it, archived? */
+  function laneArchived(lane: Lane): boolean {
+    return lane.source === ARCHIVED_KEY || isArchived(lane.source);
+  }
+
+  async function setArchived(source: string, archived: boolean) {
+    archiveError = null;
+    try {
+      const res = await fetch('/api/archived', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ source, archived })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      archivedList = data.archived;
+    } catch (err) {
+      archiveError = err instanceof Error ? err.message : String(err);
+    }
+  }
 
   function laneLabel(lane: Lane): string {
+    if (lane.source === ARCHIVED_KEY) return 'Archived';
     if (lane.members) {
       const key = lane.source.slice(GROUP_PREFIX.length);
       const label = CATEGORIES[key]?.label ?? key;
@@ -173,6 +207,7 @@
   }
 
   function laneColor(lane: Lane): string {
+    if (lane.source === ARCHIVED_KEY) return '#737373';
     if (lane.members) return CATEGORIES[lane.source.slice(GROUP_PREFIX.length)]?.color ?? '#525252';
     return getSourceCategory(lane.source).color;
   }
@@ -195,9 +230,12 @@
   }
 
   // A category with two or more sources gets one combined lane
+  let activeLanes = $derived(lanes.filter((l) => !isArchived(l.source)));
+  let archivedLanes = $derived(lanes.filter((l) => isArchived(l.source)));
+
   let groups = $derived.by(() => {
     const byCat = new Map<string, Lane[]>();
-    for (const lane of lanes) {
+    for (const lane of activeLanes) {
       const cat = getSourceInfo(lane.source).cat;
       byCat.set(cat, [...(byCat.get(cat) ?? []), lane]);
     }
@@ -211,12 +249,15 @@
     kind: 'source' | 'group' | 'member';
   }
 
+  // Archived sources sit together at the bottom, closed until you open them
+  let archivedGroup = $derived(archivedLanes.length ? mergeLanes(ARCHIVED_KEY, archivedLanes) : null);
+
   // What's on screen, top to bottom
   let rows = $derived.by((): Row[] => {
-    if (!grouped) return sortLanes(lanes).map((lane) => ({ lane, kind: 'source' }));
     const out: Row[] = [];
     const bySource = new Map(lanes.map((l) => [l.source, l]));
-    for (const lane of sortLanes(groups)) {
+    const top = grouped ? sortLanes(groups) : sortLanes(activeLanes);
+    for (const lane of top) {
       if (!lane.members) {
         out.push({ lane, kind: 'source' });
         continue;
@@ -226,10 +267,16 @@
         for (const m of sortLanes(lane.members.map((s) => bySource.get(s)!))) out.push({ lane: m, kind: 'member' });
       }
     }
+    if (archivedGroup) {
+      out.push({ lane: archivedGroup, kind: 'group' });
+      if (openGroups.has(ARCHIVED_KEY)) {
+        for (const m of sortLanes(archivedLanes)) out.push({ lane: m, kind: 'member' });
+      }
+    }
     return out;
   });
 
-  let groupLanes = $derived(groups.filter((g) => g.members));
+  let groupLanes = $derived([...groups.filter((g) => g.members), ...(archivedGroup ? [archivedGroup] : [])]);
   let allOpen = $derived(groupLanes.length > 0 && groupLanes.every((g) => openGroups.has(g.source)));
 
   function toggleGroup(key: string) {
@@ -254,8 +301,9 @@
   let totals = $derived({
     records: lanes.reduce((n, l) => n + l.total, 0),
     undated: lanes.reduce((n, l) => n + l.undated, 0),
-    withGaps: lanes.filter((l) => bigGaps(l).length > 0).length,
-    stale: lanes.filter((l) => l.total && staleDays(l) >= gapThreshold).length
+    withGaps: activeLanes.filter((l) => bigGaps(l).length > 0).length,
+    stale: activeLanes.filter((l) => l.total && staleDays(l) >= gapThreshold).length,
+    archived: archivedLanes.length
   });
 
   let ticks = $derived(trackWidth > 0 && viewEnd > viewStart ? axisTicks(viewStart, viewEnd, trackWidth, isPhone ? 44 : 56) : []);
@@ -286,6 +334,7 @@
     const bins = Math.max(1, Math.min(span, Math.floor(width / cellPx)));
     const dpr = window.devicePixelRatio || 1;
 
+    void archivedList; // redraw when a source is archived or unarchived
     for (const { lane } of rows) {
       const canvas = canvases[lane.source];
       if (!canvas) continue;
@@ -345,8 +394,8 @@
       ctx.fillStyle = '#f87171';
       for (const [a, b] of gapLines) ctx.fillRect(a, LANE_H - 2, Math.max(1, b - a), 2);
 
-      // Nothing since the last record
-      if (today - lane.lastDay >= threshold && lane.lastDay < end) {
+      // Nothing since the last record (expected once a source is archived)
+      if (!laneArchived(lane) && today - lane.lastDay >= threshold && lane.lastDay < end) {
         const a = x(Math.max(start, lane.lastDay + 1));
         const b = x(end + 1);
         ctx.fillStyle = 'rgba(251, 191, 36, 0.1)';
@@ -381,7 +430,7 @@
       end,
       count: bins[b],
       gap,
-      stale: lane.total > 0 && day > lane.lastDay,
+      stale: lane.total > 0 && day > lane.lastDay && !laneArchived(lane),
       lastDay: lane.lastDay,
       x: clientX,
       y: clientY
@@ -479,6 +528,7 @@
           {lanes.length} sources · {formatCount(totals.records)} records
           {#if totals.withGaps}· <span class="gap-text">{totals.withGaps} with gaps</span>{/if}
           {#if totals.stale}· <span class="stale-text">{totals.stale} quiet</span>{/if}
+          {#if totals.archived}· {totals.archived} archived{/if}
         </span>
       {/if}
     </div>
@@ -550,7 +600,8 @@
         {@const stale = staleDays(lane)}
         {@const isGroup = kind === 'group'}
         {@const open = isGroup ? openGroups.has(lane.source) : expanded.has(lane.source)}
-        <div class="lane" class:open class:group={isGroup} class:member={kind === 'member'}>
+        {@const archived = laneArchived(lane)}
+        <div class="lane" class:open class:group={isGroup} class:member={kind === 'member'} class:archived>
           <button
             class="lane-label"
             aria-expanded={open}
@@ -587,7 +638,7 @@
             <span class="count">{formatCount(lane.total)}</span>
             {#if lane.total}
               <span class="years">
-                {dayToDate(lane.firstDay).getUTCFullYear()}–<span class:stale-text={stale >= gapThreshold}
+                {dayToDate(lane.firstDay).getUTCFullYear()}–<span class:stale-text={!archived && stale >= gapThreshold}
                   >{sinceLabel(lane)}</span
                 >
               </span>
@@ -602,7 +653,7 @@
               <div class="facts">
                 {#if lane.total}
                   <span>First record {formatDay(lane.firstDay)}</span>
-                  <span class:stale-text={stale >= gapThreshold}>
+                  <span class:stale-text={!archived && stale >= gapThreshold}>
                     Latest {formatDay(lane.lastDay)} ({formatAgo(stale)})
                   </span>
                   <span>{lane.days.length.toLocaleString()} days with records</span>
@@ -611,6 +662,15 @@
                   <span>{lane.undated.toLocaleString()} undated, not shown</span>
                 {/if}
                 <a href="/?source={encodeURIComponent(lane.source)}">Browse in search ❯</a>
+                {#if archived}
+                  <span class="muted">Archived: kept and searchable, not synced.</span>
+                  <button class="link archive-toggle" onclick={() => setArchived(lane.source, false)}>Unarchive</button>
+                {:else}
+                  <button class="link archive-toggle" onclick={() => setArchived(lane.source, true)}>
+                    Archive (no longer in use, stop syncing)
+                  </button>
+                {/if}
+                {#if archiveError}<span class="gap-text">Couldn't save: {archiveError}</span>{/if}
               </div>
               {#if gaps.length}
                 <ul class="gap-list">
@@ -659,7 +719,10 @@
 </div>
 
 {#if hover}
-  {@const hoverLane = groups.find((g) => g.source === hover?.source) ?? lanes.find((l) => l.source === hover?.source)}
+  {@const hoverLane =
+    groups.find((g) => g.source === hover?.source) ??
+    (archivedGroup?.source === hover?.source ? archivedGroup : undefined) ??
+    lanes.find((l) => l.source === hover?.source)}
   <div
     class="tooltip"
     role="tooltip"
@@ -877,6 +940,20 @@
 
   .lanes > .lane.group .lane-label {
     color: #d4d4d4;
+  }
+
+  .lanes > .lane.archived canvas {
+    opacity: 0.45;
+  }
+
+  .lanes > .lane.archived .lane-label {
+    color: #737373;
+  }
+
+  .archive-toggle {
+    align-self: flex-start;
+    margin-top: 4px;
+    font-size: 11px;
   }
 
   .lanes > .lane.member .lane-label {

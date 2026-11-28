@@ -106,6 +106,18 @@ pnpm otso log --source lastfm   # one source over time
 pnpm otso log --kind sync -n 30 --json
 ```
 
+## Archiving sources you no longer use
+
+When you've stopped using a service, archive it. Its data stays in the archive and in search, `otso sync` and the scheduled sync skip it, and the Coverage page in otso-search moves it to an Archived group instead of flagging it as quiet.
+
+```sh
+pnpm otso archive foursquare     # stop syncing it
+pnpm otso archive                # list archived sources
+pnpm otso unarchive foursquare   # sync it again
+```
+
+The list is kept in `<sources-dir>/archived.json`, so every Mac syncing into the same sources-dir shares it. Archiving a name covers its per-device and per-account variants too: `safari` covers every Mac's Safari history, while `safari-old-mac` covers only that Mac. The Coverage page can archive and unarchive sources as well.
+
 ## Running on a schedule
 
 `otso sync` with no arguments syncs every connected API source and every local source that's on this Mac and has been synced before (by any Mac). Each source reports what's new and what's already stored, and when and from which Mac it was last synced. To also index, add `--index`:
