@@ -37,6 +37,9 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
   // Browse (Web/App Usage)
   'safari': { label: 'Safari', cat: 'browse', icon: '🧭' },
   'helium': { label: 'Helium', cat: 'browse', icon: '◎' },
+  'google-chrome': { label: 'Chrome', cat: 'browse', icon: '◉' },
+  'arc': { label: 'Arc', cat: 'browse', icon: '◠' },
+  'dia': { label: 'Dia', cat: 'browse', icon: '◇' },
   'chrome': { label: 'Chrome', cat: 'browse', icon: '◉' },
   'google-search': { label: 'Google', cat: 'browse', icon: '🔍' },
   'atlas': { label: 'Atlas', cat: 'browse', icon: '🗺' },
