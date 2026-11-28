@@ -10,6 +10,7 @@ function chronicleDir() {
   return writeFiles(mkdtempSync(join(tmpdir(), 'chronicle-')), {
     'secrets/arena.yml': 'secrets:\n  access_token: "arena-tok"\nchronicle_etl_version: 0.6.1\n',
     'secrets/pinboard.yml': 'secrets:\n  api_token: testuser:ABC123\n  access_token: other\n',
+    'secrets/foursquare.yml': 'secrets:\n  access_token: fsq-tok\n  client_id: fid\n  client_secret: fsecret\n',
     'secrets/spotify.yml': 'secrets:\n  client_id: x\n  access_token: y\n',
     'jobs/lastfm-api.yml': 'extractor:\n  name: lastfm:api\n  options:\n    api_key: lfkey\n    username: testuser\nloader:\n  name: json\n',
     'jobs/arena-api.yml': 'extractor:\n  options:\n    access_token: $ARENA_TOKEN\n',
@@ -28,6 +29,7 @@ describe('chronicle-etl migration', () => {
       arena: { accessToken: 'arena-tok' },
       pinboard: { accessToken: 'testuser:ABC123' },
       lastfm: { apiKey: 'lfkey', username: 'testuser' },
+      foursquare: { clientId: 'fid', clientSecret: 'fsecret', accessToken: 'fsq-tok' },
     });
     expect(unsupportedChronicleServices(dir)).toEqual(['mastodon', 'spotify']);
   });
@@ -36,7 +38,7 @@ describe('chronicle-etl migration', () => {
     sandbox();
     const dir = chronicleDir();
     const first = await migrateChronicle({ dir, verify: false });
-    expect(first.results.map((r) => r.status)).toEqual(['saved', 'saved', 'saved']);
+    expect(first.results.map((r) => r.status)).toEqual(['saved', 'saved', 'saved', 'saved']);
     expect((await loadCredentials('pinboard'))?.accessToken).toBe('testuser:ABC123');
     const second = await migrateChronicle({ dir, verify: false });
     expect(second.results.every((r) => r.status === 'kept-existing')).toBe(true);
