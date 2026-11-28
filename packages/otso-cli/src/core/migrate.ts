@@ -81,6 +81,12 @@ export function mapChronicleCredentials(dir: string): Record<string, Credentials
   const readwise = tokenFor('readwise', /^readwise-/);
   if (usable(readwise)) out.readwise = { accessToken: readwise };
 
+  // Chronicle's Spotify plugin kept its own app's id, secret and refresh token.
+  const sp = secret('spotify');
+  if (usable(sp.client_id) && usable(sp.client_secret) && usable(sp.refresh_token)) {
+    out.spotify = { clientId: sp.client_id, clientSecret: sp.client_secret, refreshToken: sp.refresh_token };
+  }
+
   // Chronicle's Foursquare plugin kept its own app's id and secret with the user token.
   const fsq = secret('foursquare');
   if (usable(fsq.client_id) && usable(fsq.client_secret) && usable(fsq.access_token)) {
@@ -90,7 +96,7 @@ export function mapChronicleCredentials(dir: string): Record<string, Credentials
   return out;
 }
 
-/** Services chronicle had credentials for that otso has no API login for (none yet, or export-only like Spotify). */
+/** Services chronicle had credentials for that otso has no API login for. */
 export function unsupportedChronicleServices(dir: string): string[] {
   const names = new Set<string>();
   const secrets = join(dir, 'secrets');

@@ -31,7 +31,8 @@ describe('chronicle-etl migration', () => {
       lastfm: { apiKey: 'lfkey', username: 'testuser' },
       foursquare: { clientId: 'fid', clientSecret: 'fsecret', accessToken: 'fsq-tok' },
     });
-    expect(unsupportedChronicleServices(dir)).toEqual(['mastodon', 'spotify']);
+    // Spotify has a login now, but this fixture lacks a secret and refresh token, so nothing is mapped.
+    expect(unsupportedChronicleServices(dir)).toEqual(['mastodon']);
   });
 
   test('saves without verify and keeps existing credentials', async () => {
