@@ -15,9 +15,11 @@ pub fn options(path: &Path) -> SqliteConnectOptions {
         .log_slow_statements(log::LevelFilter::Debug, Duration::from_secs(1))
 }
 
-/// A writable database, created if missing.
+/// A writable database, created if missing. The indexer serializes its own
+/// writes, so a lock held elsewhere (another indexer run, a reader
+/// checkpointing) is waited out for up to a minute instead of sqlx's 5s.
 pub fn read_write(path: &Path) -> SqliteConnectOptions {
-    options(path).create_if_missing(true)
+    options(path).create_if_missing(true).busy_timeout(Duration::from_secs(60))
 }
 
 /// A source database, opened read-only. `immutable` skips SQLite's locking

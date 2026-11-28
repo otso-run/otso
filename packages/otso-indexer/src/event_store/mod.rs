@@ -107,9 +107,10 @@ pub struct Transaction {
 /// SQLite-backed event store with batch transaction support
 pub struct SqliteEventStore {
     pool: SqlitePool,
-    /// Sources are read in parallel but written one chunk at a time: SQLite
-    /// has a single writer, and concurrent write transactions would only
-    /// wait on each other's locks (or fail with "database is locked").
+    /// Sources are read in parallel but every write (batch rows, events,
+    /// commits, rollbacks) takes this lock: SQLite has a single writer, and
+    /// two of our own connections writing at once would only wait on each
+    /// other's locks, or fail with "database is locked".
     write_lock: tokio::sync::Mutex<()>,
 }
 
@@ -151,6 +152,7 @@ impl SqliteEventStore {
 
     /// Begin a new batch transaction for a source
     pub async fn begin_batch(&self, source: &str) -> Result<Transaction> {
+        let _guard = self.write_lock.lock().await;
         let batch_id = Uuid::new_v4();
         let started_at = chrono::Utc::now().timestamp();
 
@@ -176,6 +178,7 @@ impl SqliteEventStore {
 
     /// Append an event to the current transaction
     pub async fn append(&self, tx: &Transaction, mut event: Event) -> Result<()> {
+        let _guard = self.write_lock.lock().await;
         event.batch_id = Some(tx.batch_id);
         event.ingested_at = chrono::Utc::now().timestamp();
 
@@ -250,6 +253,7 @@ impl SqliteEventStore {
 
     /// Commit the transaction
     pub async fn commit(&self, tx: Transaction) -> Result<BatchStats> {
+        let _guard = self.write_lock.lock().await;
         let completed_at = chrono::Utc::now().timestamp();
         let event_count = tx.event_count.load(Ordering::SeqCst);
 
@@ -299,6 +303,7 @@ impl SqliteEventStore {
 
     /// Rollback a specific batch by ID
     pub async fn rollback_batch(&self, batch_id: Uuid) -> Result<i64> {
+        let _guard = self.write_lock.lock().await;
         // Soft delete all events from this batch
         let result = sqlx::query(
             r#"
