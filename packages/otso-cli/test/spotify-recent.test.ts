@@ -39,3 +39,14 @@ test('spotify: recently played after the newest stored play; rotated refresh tok
   expect((await loadCredentials('spotify'))?.refreshToken).toBe('r2');
   expect(runTomlQueries('spotify', sources)).toHaveLength(3);
 });
+
+test('spotify: a Premium-only 403 explains itself', async () => {
+  sandbox();
+  mockFetch([
+    { match: /accounts\.spotify\.com\/api\/token/, respond: () => ({ body: { access_token: 'acc' } }) },
+    { match: /\/v1\/me$/, respond: () => ({ body: { display_name: 'Test User' } }) },
+    { match: /recently-played/, respond: () => ({ status: 403, body: { error: { message: 'Active premium subscription required for the owner of the app.' } } }) },
+  ]);
+  await authenticate('spotify', { clientId: 'id', clientSecret: 'secret', refreshToken: 'r0' });
+  await expect(runSync('spotify')).rejects.toThrow(/Premium/);
+});

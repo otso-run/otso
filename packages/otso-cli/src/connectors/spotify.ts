@@ -1,6 +1,6 @@
 import { EVENTS_TABLE } from '../core/chronicle.js';
 import { saveCredentials, type Credentials } from '../core/credentials.js';
-import { getJson } from '../core/http.js';
+import { getJson, HttpError } from '../core/http.js';
 import { redirectUri, waitForAuthorizationCode } from '../core/oauth.js';
 import { iso } from '../core/time.js';
 import type { Connector, RunStats } from './types.js';
@@ -163,7 +163,19 @@ export const spotify: Connector = {
     const after = Number(store.getState('recent_after')) || 0;
     const p = new URLSearchParams({ limit: '50' });
     if (after) p.set('after', String(after));
-    const res = await getJson<any>(`${API}/me/player/recently-played?${p}`, { headers: { Authorization: `Bearer ${t.access_token}` } });
+    let res: any;
+    try {
+      res = await getJson<any>(`${API}/me/player/recently-played?${p}`, { headers: { Authorization: `Bearer ${t.access_token}` } });
+    } catch (err) {
+      // Spotify only serves the Web API to apps whose owner has Premium.
+      if (err instanceof HttpError && err.status === 403 && /premium/i.test(err.body)) {
+        throw new Error(
+          "Spotify only allows recently played for apps whose owner has Spotify Premium. Upgrade the app owner's account, " +
+            'or stop syncing it with: otso auth spotify --logout (exports still work with otso ingest spotify).'
+        );
+      }
+      throw err;
+    }
     const items: any[] = res?.items ?? [];
     const stats: RunStats = {};
     addStats(stats, 'events', store.upsert(EVENTS_TABLE, items.filter((i) => i.track && i.played_at).map(recentRow)));
