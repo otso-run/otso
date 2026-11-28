@@ -21,6 +21,10 @@ All notable changes to Otso are recorded here. The format is based on
 - Events from an indexer run that was interrupted part way come back on the next `otso index`. Before, they were dropped from the event store for good. [#38](https://github.com/otso-run/otso/pull/38)
 - Reader syncs wait out Readwise's rate limit instead of failing part way through a large pull. [#38](https://github.com/otso-run/otso/pull/38)
 
+### Security
+
+- Otso Search no longer renders HTML from result titles and snippets, only its own match highlighting, and only opens http, https, mailto and file links. Text from calendar invites, messages or saved pages can't run scripts in the search page. [#45](https://github.com/otso-run/otso/pull/45)
+
 ## [0.2.0] - 2026-11-27
 
 ### Added

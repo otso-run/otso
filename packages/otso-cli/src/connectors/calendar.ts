@@ -48,6 +48,15 @@ interface ItemRow {
   lon: number | null;
 }
 
+/** Invites can come from anyone; keep only links a browser should open. */
+function webUrl(url: string | null): string | undefined {
+  try {
+    return url && ['http:', 'https:', 'mailto:'].includes(new URL(url).protocol) ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function eventRow(r: ItemRow, start: number, end: number | null, occurrence: boolean) {
   const place = r.loc_title || r.loc_address;
   const hasGeo = r.lat != null && r.lon != null && !(r.lat === 0 && r.lon === 0);
@@ -67,7 +76,7 @@ function eventRow(r: ItemRow, start: number, end: number | null, occurrence: boo
     object: {
       calendar: r.calendar ?? undefined,
       allDay: !!r.all_day,
-      url: r.url || undefined,
+      url: webUrl(r.url),
       repeats: !!r.recurs,
       occurrence,
     },
