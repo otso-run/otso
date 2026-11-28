@@ -110,6 +110,7 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
 
   // Event (Calendar)
   'calendar': { label: 'Calendar', cat: 'event', icon: '📅' },
+  'apple-calendar': { label: 'Calendar', cat: 'event', icon: '📅' },
   'gcal': { label: 'Calendar', cat: 'event', icon: '📆' },
 
   // Spend (Financial)

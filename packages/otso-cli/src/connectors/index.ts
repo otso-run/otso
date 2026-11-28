@@ -2,6 +2,7 @@ import type { Connector } from './types.js';
 import { arena } from './arena.js';
 import { readwise } from './readwise.js';
 import { pinboard } from './pinboard.js';
+import { raindrop } from './raindrop.js';
 import { lastfm } from './lastfm.js';
 import { github } from './github.js';
 import { granola } from './granola.js';
@@ -10,6 +11,7 @@ import { claude } from './claude.js';
 import { linkedin } from './linkedin.js';
 import { twitter } from './twitter.js';
 import { googleTakeout } from './google-takeout.js';
+import { appleCalendar } from './calendar.js';
 import { gmail } from './gmail.js';
 import { safari, helium, imessage, appleNotes, applePhotos, applePodcasts, things, timing } from './local.js';
 
@@ -20,6 +22,7 @@ export const CONNECTORS: Connector[] = [
   arena,
   readwise,
   pinboard,
+  raindrop,
   lastfm,
   github,
   granola,
@@ -38,6 +41,7 @@ export const CONNECTORS: Connector[] = [
   applePhotos,
   applePodcasts,
   things,
+  appleCalendar,
   timing,
 ];
 

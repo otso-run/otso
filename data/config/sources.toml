@@ -36,6 +36,31 @@ FROM events WHERE type = 'BookmarkAction'
 """
 
 [[sources]]
+name = "raindrop"
+enabled = true
+db_path = "raindrop/chronicle/chronicle.db"
+category = "reading"
+
+[[sources.queries]]
+table = "events"
+entry_type = "bookmark"
+action_type = "BookmarkAction"
+object_type = "WebPage"
+sql = """
+SELECT
+    source_id as external_id,
+    json_extract(object, '$.name') as title,
+    TRIM(COALESCE(json_extract(object, '$.description'), '') || ' ' || COALESCE(json_extract(object, '$.note'), '') || ' ' ||
+      COALESCE((SELECT group_concat(json_extract(h.value, '$.text') || COALESCE(' ' || json_extract(h.value, '$.note'), ''), ' ')
+                FROM json_each(json_extract(object, '$.highlights')) h), '') || ' ' ||
+      COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.keywords')) k), '') || ' ' ||
+      COALESCE(json_extract(result, '$.name'), '')) as content,
+    end_time as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events WHERE type = 'BookmarkAction'
+"""
+
+[[sources]]
 name = "readwise"
 enabled = true
 db_path = "readwise/chronicle/chronicle.db"
@@ -765,6 +790,33 @@ SELECT
     CAST(((CAST(tweet_id AS INTEGER) >> 22) + 1288834974657) / 1000 AS TEXT) as occurred_at,
     expanded_url as url
 FROM likes
+"""
+
+# ============================================================================
+# CALENDAR
+# ============================================================================
+
+# Calendar.app's cache of every account it shows (iCloud, Google, Exchange).
+[[sources]]
+name = "apple-calendar"
+enabled = true
+db_path = "apple-calendar/chronicle/chronicle.db"
+category = "calendar"
+
+[[sources.queries]]
+table = "events"
+entry_type = "event"
+action_type = "AttendAction"
+object_type = "Event"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    TRIM(COALESCE(description, '') || ' ' || COALESCE(json_extract(contentLocation, '$.name'), '') || ' ' || COALESCE(json_extract(contentLocation, '$.address'), '') || ' ' || COALESCE(additionalType, '')) as content,
+    startTime as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+WHERE COALESCE(actionStatus, '') <> 'canceled'
 """
 
 # ============================================================================
