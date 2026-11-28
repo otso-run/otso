@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { safeHref } from '$lib/safe-html';
   import { getSourceInfo } from '$lib/data/sources';
 
   interface Props {
@@ -99,8 +100,8 @@
               {#if summary.content && summary.content !== summary.title}
                 <p>{summary.content}</p>
               {/if}
-              {#if summary.url}
-                <a class="open-link" href={summary.url} target="_blank" rel="noopener noreferrer">
+              {#if safeHref(summary.url)}
+                <a class="open-link" href={safeHref(summary.url)} target="_blank" rel="noopener noreferrer">
                   Open link ↗
                 </a>
               {/if}

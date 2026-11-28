@@ -12,6 +12,7 @@ All notable changes to Otso are recorded here. The format is based on
 - `otso ingest gmail` reads the Mail mbox from a Takeout as its own source. The mailbox is streamed, so a mailbox of tens of GB is fine; subjects, people, message text, attachment names and labels are searchable, spam is left out, and each result opens the message in Gmail. [#42](https://github.com/otso-run/otso/pull/42)
 - Readwise Reader documents keep their full article text, and search finds words from the body, not just the title and summary. Results also show the author, site, published date, reading time, tags, notes, reading progress and when you saved and last opened each one. The first sync after upgrading fetches every Reader document once to fill this in. [#38](https://github.com/otso-run/otso/pull/38)
 - A Coverage page in Otso Search (`/coverage`) lines up every source on one time axis, so you can see where each archive starts, where it has gaps and which sources have gone quiet. Choose the smallest gap worth flagging, drag to zoom, and open a source's longest gaps or jump to it in search. It works on phones too. [#41](https://github.com/otso-run/otso/pull/41)
+- `otso sync apple-calendar` brings in events from every account Calendar.app shows (iCloud, Google, Exchange, subscriptions), which also covers Fantastical. Each sync adds the past occurrences of repeating events that Calendar can still see and keeps the older ones it stored, and removes events you deleted. A second Mac syncing the same calendars adds nothing new. Needs Full Disk Access. [#45](https://github.com/otso-run/otso/pull/45)
 - The Coverage page groups sources by the same categories as search, so all browsers or all music services share one lane that only shows a gap when none of them had anything. Select a group to see its sources, or turn grouping off with **by category**. [#43](https://github.com/otso-run/otso/pull/43)
 - `otso archive <source>` marks a source you no longer use. Its data stays searchable, but `otso sync` and the scheduled sync skip it, and the Coverage page moves it to an Archived group instead of flagging it as quiet. The Coverage page can archive and unarchive sources too, and `otso unarchive` starts syncing one again. The list is shared by every Mac that syncs into the same sources folder. [#60](https://github.com/otso-run/otso/pull/60)
 - `otso log` shows recent sync and index runs, then the sources that are failing or slow, with how long each spent copying, reading and writing and any query slower than a second. Every `otso sync` and `otso index` now records a line in `~/.otso/logs/runs.jsonl` with each source's time, counts and errors, never the data itself. [#39](https://github.com/otso-run/otso/pull/39)
@@ -29,6 +30,10 @@ All notable changes to Otso are recorded here. The format is based on
 - Reader syncs wait out Readwise's rate limit instead of failing part way through a large pull. [#38](https://github.com/otso-run/otso/pull/38)
 - A large source no longer fails a fresh `otso index` with "database is locked" when several sources write at once. [#39](https://github.com/otso-run/otso/pull/39)
 - The two mock Twitter accounts used for demo data no longer show up in a real `otso index`; only `otso index --fixtures` builds them. [#39](https://github.com/otso-run/otso/pull/39)
+
+### Security
+
+- Otso Search no longer renders HTML from result titles and snippets, only its own match highlighting, and only opens http, https, mailto and file links. Text from calendar invites, messages or saved pages can't run scripts in the search page. [#45](https://github.com/otso-run/otso/pull/45)
 
 ## [0.2.0] - 2026-11-27
 
