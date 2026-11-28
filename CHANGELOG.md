@@ -12,6 +12,7 @@ All notable changes to Otso are recorded here. The format is based on
 - `otso ingest gmail` reads the Mail mbox from a Takeout as its own source. The mailbox is streamed, so a mailbox of tens of GB is fine; subjects, people, message text, attachment names and labels are searchable, spam is left out, and each result opens the message in Gmail. [#42](https://github.com/otso-run/otso/pull/42)
 - Readwise Reader documents keep their full article text, and search finds words from the body, not just the title and summary. Results also show the author, site, published date, reading time, tags, notes, reading progress and when you saved and last opened each one. The first sync after upgrading fetches every Reader document once to fill this in. [#38](https://github.com/otso-run/otso/pull/38)
 - A Coverage page in Otso Search (`/coverage`) lines up every source on one time axis, so you can see where each archive starts, where it has gaps and which sources have gone quiet. Choose the smallest gap worth flagging, drag to zoom, and open a source's longest gaps or jump to it in search. It works on phones too. [#41](https://github.com/otso-run/otso/pull/41)
+- The Coverage page groups sources by the same categories as search, so all browsers or all music services share one lane that only shows a gap when none of them had anything. Select a group to see its sources, or turn grouping off with **by category**. [#43](https://github.com/otso-run/otso/pull/43)
 
 ### Changed
 
