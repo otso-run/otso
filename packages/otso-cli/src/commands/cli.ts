@@ -95,8 +95,8 @@ export async function authCommand(id: string, opts: { logout?: boolean; open?: b
 
 export async function syncCommand(ids: string[], opts: { full?: boolean; index?: boolean }) {
   // With no names: the sources chosen for this Mac in `otso config sources`,
-  // which start out as every connected API and every local app that's on
-  // this Mac and has been synced before (by this Mac or another one).
+  // which start out as every connected API and every local app installed
+  // on this Mac.
   const { selectedSources, indexAfterSync } = await import('../core/selection.js');
   const requested = ids.length ? ids : selectedSources(await sourceStatuses());
   // --index / --no-index win; otherwise the setting (on unless turned off).

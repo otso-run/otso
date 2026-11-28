@@ -118,7 +118,7 @@ export function statusLabel(s: SourceStatus, archived = false): { text: string; 
   if (archived) return { text: 'archived (every Mac)', ok: false };
   if (s.kind === 'api') return s.connected ? { text: `connected${s.account ? ` as ${s.account}` : ''}`, ok: true } : { text: 'not connected', ok: false };
   if (!s.onThisMac) return { text: 'app not on this Mac', ok: false };
-  if (!s.dbExists && !s.syncedAnywhere) return { text: 'on this Mac, never synced', ok: true };
+  if (!s.dbExists && !s.syncedAnywhere) return { text: 'on this Mac, new', ok: true };
   return { text: 'on this Mac', ok: true };
 }
 
@@ -131,7 +131,7 @@ export function detailLine(row: PanelRow | undefined, state: PanelState): string
   if (s.kind === 'local' && !s.onThisMac) return `${s.displayName} isn't installed on this Mac, so another Mac has to sync it.`;
   const auto = autoSelected(s);
   const on = state.checked.has(s.id);
-  if (on === auto) return on ? 'Synced by default. Space to skip it on this Mac.' : 'Not synced by default (never synced yet). Space to include it.';
+  if (on === auto) return on ? 'Synced by default. Space to skip it on this Mac.' : 'Not synced by default. Space to include it.';
   return on ? 'Always synced on this Mac. r for the automatic choice.' : 'Skipped on this Mac. r for the automatic choice.';
 }
 

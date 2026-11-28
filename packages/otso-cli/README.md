@@ -120,7 +120,7 @@ The list is kept in `<sources-dir>/archived.json`, so every Mac syncing into the
 
 ## Choosing what `otso sync` runs
 
-`otso sync` with no arguments runs the sources chosen for this Mac. Out of the box that's every connected API source and every local source that's on this Mac and has been synced before (by any Mac). To change it, open the panel:
+`otso sync` with no arguments runs the sources chosen for this Mac. Out of the box that's every connected API source and every local app installed on this Mac, including one that has never been synced, so a newly installed app is picked up on the next run. To change it, open the panel:
 
 ```bash
 pnpm otso config sources

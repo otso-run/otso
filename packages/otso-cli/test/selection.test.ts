@@ -31,7 +31,7 @@ const statuses: SourceStatus[] = [
 
 describe('choosing what a bare otso sync runs', () => {
   test('without choices it is the automatic rule', () => {
-    expect(selectedSources(statuses, {})).toEqual(['arena', 'safari']);
+    expect(selectedSources(statuses, {})).toEqual(['arena', 'safari', 'things']); // things: installed, never synced
   });
 
   test('explicit choices add and remove, but never a source this Mac cannot sync', () => {
@@ -41,14 +41,13 @@ describe('choosing what a bare otso sync runs', () => {
   });
 
   test('only choices that differ from the automatic rule are stored', () => {
-    const checked = new Set(['arena', 'things']); // safari off, things on
+    const checked = new Set(['arena', 'safari']); // things off
     expect(choicesFor(statuses, checked, { timing: false, 'some-other-branch': true })).toEqual({
-      safari: false,
-      things: true,
+      things: false,
       timing: false, // kept: this Mac can't sync it, so the panel couldn't change it
       'some-other-branch': true,
     });
-    expect(choicesFor(statuses, new Set(['arena', 'safari']))).toEqual({});
+    expect(choicesFor(statuses, new Set(['arena', 'safari', 'things']))).toEqual({});
   });
 
   test('saved per Mac in settings.json; index after sync defaults on', async () => {
@@ -72,7 +71,7 @@ describe('otso config sources panel', () => {
 
   test('keys toggle, reset, archive and flip the index setting', () => {
     let s = initialState(statuses, {});
-    expect([...s.checked].sort()).toEqual(['arena', 'safari']);
+    expect([...s.checked].sort()).toEqual(['arena', 'safari', 'things']);
     s = reduce(s, 'down'); // readwise: not connected, can't be checked
     s = reduce(s, 'toggle');
     expect(s.checked.has('readwise')).toBe(false);

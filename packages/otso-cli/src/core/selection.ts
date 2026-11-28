@@ -6,8 +6,7 @@ import type { SourceStatus } from './runner.js';
  * Which sources a bare `otso sync` (and the scheduled sync) runs on this Mac.
  *
  * Without any choices, the automatic rule applies: every connected API
- * source, and every local app that's on this Mac and has been synced before
- * (by this Mac or another one). `otso config sources` stores explicit
+ * source, and every local app installed on this Mac. `otso config sources` stores explicit
  * choices on top of that, per Mac, in ~/.otso/config/settings.json:
  *
  *   "sync": { "timing": false, "things": true }
@@ -27,10 +26,12 @@ export function canSync(s: SourceStatus): boolean {
   return false;
 }
 
-/** What a bare sync did before there were choices. */
+/** The automatic choice: connected, or installed here. */
 export function autoSelected(s: SourceStatus): boolean {
   if (s.kind === 'api') return !!s.connected;
-  if (s.kind === 'local') return !!s.onThisMac && (s.dbExists || !!s.syncedAnywhere);
+  // Any app installed on this Mac, synced before or not, so a new app (Helium
+  // on a second Mac) isn't silently left out until someone syncs it by hand.
+  if (s.kind === 'local') return !!s.onThisMac;
   return false;
 }
 
