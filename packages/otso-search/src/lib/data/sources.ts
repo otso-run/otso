@@ -112,6 +112,7 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
 
   // Tasks (Productivity)
   'things': { label: 'Things', cat: 'tasks', icon: '☑' },
+  'omnifocus': { label: 'OmniFocus', cat: 'tasks', icon: '✓' },
   'apple-reminders': { label: 'Reminders', cat: 'tasks', icon: '☑' },
 
   // Event (Calendar)
