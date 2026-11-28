@@ -6,6 +6,8 @@ All notable changes to Otso are recorded here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-27
+
 ### Added
 
 - `otso-cli`, a command line and terminal UI for getting personal data into Otso. The import flow walks through choosing sources, connecting accounts and running a first sync, with Are.na, Safari and Spotify as the first plugins. [#31](https://github.com/otso-run/otso/pull/31)
@@ -15,6 +17,7 @@ All notable changes to Otso are recorded here. The format is based on
 - Several Macs can sync into one archive, with one of them doing the indexing. Browser history is stored per device, so search shows which Mac a visit came from. [#35](https://github.com/otso-run/otso/pull/35)
 - Helium as a browser history source, through a generic Chromium `History` reader that other Chromium browsers can reuse. [#35](https://github.com/otso-run/otso/pull/35)
 - `otso schedule install`, `uninstall` and `status`, which manage a launchd agent that syncs (and optionally indexes) on an interval and logs to `~/Library/Logs/otso/`. [#35](https://github.com/otso-run/otso/pull/35)
+- A phone layout for `otso-search`, leaving desktop unchanged. The search field is sized for touch and doesn't trigger zoom on iOS. Category filters scroll as one row of chips, sources and result details open as bottom sheets, result rows take two lines, and the timeline is pinned to the bottom. [#37](https://github.com/otso-run/otso/pull/37)
 - `otso-indexer --sources-dir`, so the CLI can point the indexer at a data folder outside the checkout. [#32](https://github.com/otso-run/otso/pull/32)
 
 ### Changed
@@ -55,5 +58,6 @@ All notable changes to Otso are recorded here. The format is based on
 
 - A localhost URL in the tutorial that broke the Vercel build. [#30](https://github.com/otso-run/otso/pull/30)
 
-[Unreleased]: https://github.com/otso-run/otso/compare/7ad1a4d...HEAD
-[0.1.0]: https://github.com/otso-run/otso/pull/30
+[Unreleased]: https://github.com/otso-run/otso/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/otso-run/otso/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/otso-run/otso/releases/tag/v0.1.0
