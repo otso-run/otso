@@ -6,6 +6,19 @@ All notable changes to Otso are recorded here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Readwise Reader documents keep their full article text, and search finds words from the body, not just the title and summary. Results also show the author, site, published date, reading time, tags, notes, reading progress and when you saved and last opened each one. The first sync after upgrading fetches every Reader document once to fill this in. [#38](https://github.com/otso-run/otso/pull/38)
+
+### Changed
+
+- `otso index` picks up edited rows. When a source row changes, or a `sources.toml` query starts selecting more, its search entry is replaced on the next build, so `otso index --fresh` is no longer needed after changing a query. Queries can also return a `metadata` JSON column that shows in the result detail. [#38](https://github.com/otso-run/otso/pull/38)
+
+### Fixed
+
+- Events from an indexer run that was interrupted part way come back on the next `otso index`. Before, they were dropped from the event store for good. [#38](https://github.com/otso-run/otso/pull/38)
+- Reader syncs wait out Readwise's rate limit instead of failing part way through a large pull. [#38](https://github.com/otso-run/otso/pull/38)
+
 ## [0.2.0] - 2026-11-27
 
 ### Added
