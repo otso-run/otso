@@ -229,6 +229,8 @@ export interface SourceStatus {
   onThisMac?: boolean;
   /** Per-device sources: some Mac (or the shared pre-split source) has synced it. */
   syncedAnywhere?: boolean;
+  /** Another Mac's copy of a per-device source (or the shared pre-split one): the connector id it belongs to. */
+  parent?: string;
 }
 
 function fillFromDb(status: SourceStatus, path: string, tables: Connector['tables']) {
@@ -266,14 +268,14 @@ export async function sourceStatuses(): Promise<SourceStatus[]> {
     // The shared pre-split source and every other Mac's <id>-<device>.
     known.add(target.dbPath);
     const others: SourceStatus[] = [];
-    const shared: SourceStatus = { id: `${c.id} (shared)`, displayName: `${c.displayName} (shared, before per-device)`, kind: c.kind, connected: null, dbExists: false, rows: 0 };
+    const shared: SourceStatus = { id: `${c.id} (shared)`, displayName: `${c.displayName} (shared, before per-device)`, kind: c.kind, connected: null, dbExists: false, rows: 0, parent: c.id };
     fillFromDb(shared, join(getSourcesDir(), c.dbPath), c.tables);
     if (shared.dbExists) others.push(shared);
     for (const dir of deviceFolders(c)) {
       const dbPath = `${dir}/chronicle/chronicle.db`;
       known.add(dbPath);
       if (dbPath === target.dbPath) continue;
-      const o: SourceStatus = { id: dir, displayName: `${c.displayName} (${dir.slice(c.id.length + 1)})`, kind: c.kind, connected: null, dbExists: false, rows: 0 };
+      const o: SourceStatus = { id: dir, displayName: `${c.displayName} (${dir.slice(c.id.length + 1)})`, kind: c.kind, connected: null, dbExists: false, rows: 0, parent: c.id };
       fillFromDb(o, join(getSourcesDir(), dbPath), c.tables);
       others.push(o);
     }
@@ -293,6 +295,7 @@ export async function sourceStatuses(): Promise<SourceStatus[]> {
       connected: null,
       dbExists: false,
       rows: 0,
+      parent: base?.id,
     };
     fillFromDb(status, join(getSourcesDir(), s.db_path), base?.tables ?? []);
     out.push(status);

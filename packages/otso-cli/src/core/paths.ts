@@ -49,6 +49,13 @@ export interface Settings {
   indexerPath?: string;
   /** This Mac's name for per-device sources (safari-<device>); defaults from the hostname. */
   device?: string;
+  /**
+   * Explicit choices for a bare `otso sync` on this Mac (otso config sources):
+   * true = always, false = never. Sources not listed follow the automatic rule.
+   */
+  sync?: Record<string, boolean>;
+  /** Run `otso index` after `otso sync` (default true). */
+  indexAfterSync?: boolean;
 }
 
 export function readSettings(): Settings {
