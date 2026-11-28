@@ -48,6 +48,7 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
 
   // Bookmark (Saved/Starred)
   'pinboard': { label: 'Pinboard', cat: 'bookmark', icon: '📌' },
+  'zotero': { label: 'Zotero', cat: 'bookmark', icon: '📚' },
   'arena': { label: 'Are.na', cat: 'bookmark', icon: '▢' },
   'raindrop': { label: 'Raindrop', cat: 'bookmark', icon: '💧' },
   'pinterest': { label: 'Pinterest', cat: 'bookmark', icon: '📌' },
