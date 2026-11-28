@@ -15,6 +15,7 @@ All notable changes to Otso are recorded here. The format is based on
 - `otso auth raindrop` and `otso sync raindrop` bring in Raindrop.io bookmarks with their notes, tags, collections and highlights, all searchable. After the first full pull, a sync only reads bookmarks changed since the last one, and bookmarks you trash in Raindrop are removed. [#46](https://github.com/otso-run/otso/pull/46)
 - The Coverage page groups sources by the same categories as search, so all browsers or all music services share one lane that only shows a gap when none of them had anything. Select a group to see its sources, or turn grouping off with **by category**. [#43](https://github.com/otso-run/otso/pull/43)
 - `otso log` shows recent sync and index runs, then the sources that are failing or slow, with how long each spent copying, reading and writing and any query slower than a second. Every `otso sync` and `otso index` now records a line in `~/.otso/logs/runs.jsonl` with each source's time, counts and errors, never the data itself. [#39](https://github.com/otso-run/otso/pull/39)
+- `otso sync timing` reads app and document usage from the Timing app's database, so Timing stays current instead of stopping where the Chronicle import ended. It continues an existing Timing archive from its newest entry rather than reading the whole history again, re-reads the last week each run to pick up project changes, and removes entries deleted in Timing. No Full Disk Access needed. [#44](https://github.com/otso-run/otso/pull/44)
 
 ### Changed
 
