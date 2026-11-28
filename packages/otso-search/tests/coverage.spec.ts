@@ -11,6 +11,7 @@ test.describe('Coverage view', () => {
 
   test('draws one lane per source on a shared axis', async ({ page }) => {
     const stats = await (await page.request.get('/api/coverage')).json();
+    await page.getByRole('button', { name: 'by category' }).click();
     await expect(page.locator('.lanes > .lane')).toHaveCount(stats.sources.length);
     await expect(page.locator('.axis-track .tick').first()).toBeVisible();
 
@@ -25,7 +26,10 @@ test.describe('Coverage view', () => {
   });
 
   test('lists a source’s gaps and zooms to one', async ({ page }) => {
-    const lane = page.locator('.lanes > .lane').filter({ has: page.locator('.lane-stats .gap-text') }).first();
+    const lane = page
+      .locator('.lanes > .lane:not(.group)')
+      .filter({ has: page.locator('.lane-stats .gap-text') })
+      .first();
     await lane.locator('.lane-label').click();
     const gap = lane.locator('.gap-list button').first();
     await expect(gap).toBeVisible();
@@ -52,10 +56,26 @@ test.describe('Coverage view', () => {
   });
 
   test('links a source to search', async ({ page }) => {
-    const lane = page.locator('.lanes > .lane').first();
+    const lane = page.locator('.lanes > .lane:not(.group)').first();
     await lane.locator('.lane-label').click();
     await lane.getByRole('link', { name: /Browse in search/ }).click();
     await expect(page).toHaveURL(/\/\?source=/);
     await expect(page.locator('.facets label.selected')).toHaveCount(1);
+  });
+
+  test('groups sources by category and opens a group', async ({ page }) => {
+    const group = page.locator('.lanes > .lane.group').first();
+    await expect(group).toBeVisible();
+    const members = Number(await group.locator('.members').textContent());
+    expect(members).toBeGreaterThan(1);
+    await expect(page.locator('.lanes > .lane.member')).toHaveCount(0);
+
+    await group.locator('.lane-label').click();
+    await expect(page.locator('.lanes > .lane.member')).toHaveCount(members);
+
+    await page.getByRole('button', { name: 'expand all' }).click();
+    await expect(page.getByRole('button', { name: 'collapse all' })).toBeVisible();
+    await page.getByRole('button', { name: 'collapse all' }).click();
+    await expect(page.locator('.lanes > .lane.member')).toHaveCount(0);
   });
 });
