@@ -78,4 +78,46 @@ test.describe('Coverage view', () => {
     await page.getByRole('button', { name: 'collapse all' }).click();
     await expect(page.locator('.lanes > .lane.member')).toHaveCount(0);
   });
+
+  test('archives a source into its own group and back', async ({ page }) => {
+    // Keep the archived list in the page so parallel tests don't see it
+    let archived: string[] = [];
+    await page.route('**/api/archived', async (route) => {
+      if (route.request().method() === 'POST') {
+        const { source, archived: on } = route.request().postDataJSON();
+        archived = on ? [...archived, source] : archived.filter((a) => a !== source);
+      }
+      await route.fulfill({ json: { archived } });
+    });
+    await page.goto('/coverage');
+    await expect(page.locator('.lanes canvas').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.lanes > .lane.group', { hasText: 'Archived' })).toHaveCount(0);
+
+    const lane = page.locator('.lanes > .lane:not(.group)').first();
+    const name = (await lane.locator('.lane-label .name').textContent())!;
+    await lane.locator('.lane-label').click();
+    await lane.getByRole('button', { name: /^Archive/ }).click();
+
+    const group = page.locator('.lanes > .lane.group', { hasText: 'Archived' });
+    await expect(group).toBeVisible();
+    await expect(page.locator('.summary')).toContainText('1 archived');
+    await group.locator('.lane-label').click();
+    const member = page.locator('.lanes > .lane.member.archived', { hasText: name });
+    await expect(member).toBeVisible();
+
+    // Its details stay open after the move
+    await member.getByRole('button', { name: 'Unarchive' }).click();
+    await expect(group).toHaveCount(0);
+    expect(archived).toEqual([]);
+  });
+});
+
+test('the archived list API saves to the settings file', async ({ request }) => {
+  const name = `test-${Date.now()}`;
+  let res = await request.post('/api/archived', { data: { source: name, archived: true } });
+  expect(res.ok()).toBe(true);
+  expect((await res.json()).archived).toContain(name);
+  res = await request.post('/api/archived', { data: { source: name, archived: false } });
+  expect((await res.json()).archived).not.toContain(name);
+  expect((await request.post('/api/archived', { data: { source: name } })).status()).toBe(400);
 });
