@@ -1,5 +1,5 @@
 import { execa } from 'execa';
-import { CONNECTORS, requireConnector } from '../connectors/index.js';
+import { CONNECTORS, getConnector, requireConnector } from '../connectors/index.js';
 import { deleteCredentials } from '../core/credentials.js';
 import { runIndexer } from '../core/indexer.js';
 import { join, resolve } from 'node:path';
@@ -20,6 +20,7 @@ import { isNetworkPath } from '../core/storage.js';
 import { NotOnThisMacError } from '../connectors/util.js';
 import { getDeviceName, ShareNotMountedError, slugDevice } from '../core/device.js';
 import { appendRun, summarizeRun, type SourceRun } from '../core/runlog.js';
+import { archive, archivedSources, isArchived, unarchive } from '../core/archived.js';
 
 /**
  * The scriptable commands: everything the TUI does, without the TUI, so
@@ -44,9 +45,14 @@ export async function statusCommand() {
   const kindLabel = { api: 'API', export: 'export', local: 'local' } as const;
   console.log(`${'Source'.padEnd(16)} ${'Type'.padEnd(7)} ${'Login'.padEnd(22)} ${'Rows'.padStart(9)}  Last run`);
   console.log('─'.repeat(76));
+  const archived = archivedSources();
   for (const s of rows) {
     const login = s.connected === null ? '' : s.connected ? `✓ ${s.account ?? ''}`.slice(0, 21) : '✗ run otso auth';
-    const last = s.lastRun ? `${s.lastRun.kind} ${s.lastRun.at.slice(0, 16).replace('T', ' ')}` : '';
+    const last = isArchived(s.id, archived)
+      ? 'archived'
+      : s.lastRun
+        ? `${s.lastRun.kind} ${s.lastRun.at.slice(0, 16).replace('T', ' ')}`
+        : '';
     console.log(
       `${s.id.padEnd(16)} ${kindLabel[s.kind].padEnd(7)} ${login.padEnd(22)} ${String(s.dbExists ? s.rows : '').padStart(9)}  ${last}`
     );
@@ -91,13 +97,24 @@ export async function syncCommand(ids: string[], opts: { full?: boolean; index?:
   // which start out as every connected API and every local app that's on
   // this Mac and has been synced before (by this Mac or another one).
   const { selectedSources, indexAfterSync } = await import('../core/selection.js');
-  const targets = ids.length ? ids : selectedSources(await sourceStatuses());
+  const requested = ids.length ? ids : selectedSources(await sourceStatuses());
   // --index / --no-index win; otherwise the setting (on unless turned off).
   const index = opts.index ?? indexAfterSync();
+  // Archived sources are kept but never synced, even when named
+  const archived = archivedSources();
+  const device = archived.length ? await getDeviceName().catch(() => undefined) : undefined;
+  const skip = (id: string) => isArchived(id, archived) || (!!device && isArchived(`${id}-${device}`, archived));
+  const targets = requested.filter((id) => !skip(id));
+  const skippedArchived = requested.filter(skip);
+  if (skippedArchived.length) {
+    console.log(`Skipping archived: ${skippedArchived.join(', ')} (otso unarchive <source> to sync again)`);
+  }
   if (!targets.length) {
-    console.log(
-      'Nothing to sync yet. Connect a service with `otso auth <source>`, run `otso sync <local source>`, or choose sources with `otso config sources`.'
-    );
+    if (!skippedArchived.length) {
+      console.log(
+        'Nothing to sync yet. Connect a service with `otso auth <source>`, run `otso sync <local source>`, or choose sources with `otso config sources`.'
+      );
+    }
     return;
   }
   let failed = 0;
@@ -295,6 +312,35 @@ export async function configCommand(action?: string, key?: string, value?: strin
   console.log('Choose what a bare otso sync runs on this Mac: otso config sources');
 }
 
+/** Connectors a bare sync skips because they (or this Mac's copy) are archived. */
+function archivedConnectors(statuses: { id: string }[], device: string): Set<string> {
+  const list = archivedSources();
+  return new Set(statuses.map((s) => s.id).filter((id) => isArchived(id, list) || isArchived(`${id}-${device}`, list)));
+}
+
+/**
+ * Sources another sync is writing right now: the <db>.lock a running sync
+ * keeps beside the database (see core/lock.ts), keyed by connector id.
+ */
+async function busySources(statuses: { id: string }[]): Promise<Record<string, { device: string; at: string }>> {
+  const { existsSync, readFileSync } = await import('node:fs');
+  const { syncTarget } = await import('../core/runner.js');
+  const out: Record<string, { device: string; at: string }> = {};
+  for (const { id } of statuses) {
+    const c = getConnector(id);
+    if (!c?.sync) continue;
+    const lock = join(getSourcesDir(), (await syncTarget(c)).dbPath) + '.lock';
+    if (!existsSync(lock)) continue;
+    try {
+      const info = JSON.parse(readFileSync(lock, 'utf8'));
+      if (typeof info?.device === 'string' && typeof info?.at === 'string') out[id] = { device: info.device, at: info.at };
+    } catch {
+      // half-written or gone: treat as not busy
+    }
+  }
+  return out;
+}
+
 export interface ConfigSourcesOptions {
   on?: string;
   off?: string;
@@ -322,19 +368,34 @@ export async function configSourcesCommand(opts: ConfigSourcesOptions) {
   const device = await getDeviceName();
   if (!opts.list && !edits.some(([, ids]) => ids.length) && process.stdin.isTTY && process.stdout.isTTY) {
     const { runSourcesPanel } = await import('./sources-panel.js');
-    await runSourcesPanel({ statuses, settings: readSettings(), device, onSave: sel.saveSelection });
+    await runSourcesPanel({
+      statuses,
+      settings: readSettings(),
+      device,
+      archived: archivedConnectors(statuses, device),
+      busy: await busySources(statuses),
+      onSave: async (r) => {
+        await sel.saveSelection(r.sync, r.index);
+        if (r.archive.length) await archive(r.archive);
+        // An archived connector may be listed as itself or as this Mac's copy.
+        if (r.unarchive.length) await unarchive(r.unarchive.flatMap((id) => [id, `${id}-${device}`]));
+      },
+    });
     return;
   }
   const { panelRows, statusLabel, lastSyncLabel } = await import('./sources-panel.js');
   const settings = readSettings();
+  const archivedIds = archivedConnectors(statuses, device);
   console.log(`A bare otso sync on ${device} runs:\n`);
-  for (const row of panelRows(statuses)) {
+  for (const row of panelRows(statuses, await busySources(statuses))) {
     const s = row.status;
     const can = sel.canSync(s);
     const on = sel.isSelected(s, settings);
     const choice = sel.syncChoice(s.id, settings);
+    const arch = archivedIds.has(s.id);
     const how = choice === 'auto' ? '' : choice === 'on' ? '  (always)' : '  (skipped)';
-    console.log(`  [${!can ? '-' : on ? 'x' : ' '}] ${s.id.padEnd(16)} ${statusLabel(s).text.padEnd(30)} ${lastSyncLabel(row, device)}${how}`);
+    const mark = arch ? 'a' : !can ? '-' : on ? 'x' : ' ';
+    console.log(`  [${mark}] ${s.id.padEnd(16)} ${statusLabel(s, arch).text.padEnd(30)} ${lastSyncLabel(row, device)}${how}`);
   }
   console.log(`\nIndex after sync: ${sel.indexAfterSync(settings) ? 'on' : 'off'}`);
   console.log('Change: otso config sources (interactive), or --on a,b --off c --auto d');
@@ -375,5 +436,35 @@ export async function adoptCommand(from: string, opts: { archive?: string; only?
     if (failed.length) process.exitCode = 1;
   } catch (err) {
     fail(err);
+  }
+}
+
+export async function archiveCommand(names: string[]) {
+  if (!names.length) {
+    const list = archivedSources();
+    if (!list.length) {
+      console.log('Nothing archived. Archive a source you no longer use with: otso archive <source>');
+      return;
+    }
+    console.log('Archived (kept and searchable, not synced):');
+    for (const name of list) console.log(`  ${name}`);
+    console.log('\nSync one again with: otso unarchive <source>');
+    return;
+  }
+  const added = await archive(names);
+  for (const name of names) {
+    console.log(added.includes(name) ? `✓ ${name} archived` : `· ${name} was already archived`);
+  }
+  if (added.length) console.log('\nIts data stays in search; otso sync and the scheduled sync will skip it.');
+}
+
+export async function unarchiveCommand(names: string[]) {
+  const removed = await unarchive(names);
+  for (const name of names) {
+    if (removed.includes(name)) console.log(`✓ ${name} will sync again`);
+    else {
+      const covering = archivedSources().find((a) => isArchived(name, [a]));
+      console.log(covering ? `· ${name} is covered by "${covering}"; run otso unarchive ${covering}` : `· ${name} wasn't archived`);
+    }
   }
 }

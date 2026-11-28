@@ -15,34 +15,45 @@ export interface PanelRow {
   status: SourceStatus;
   /** Other Macs that hold their own copy of this per-device source. */
   otherMacs: string[];
+  /** A sync holding this source's lock right now (from <db>.lock). */
+  busy?: { device: string; at: string };
 }
 
 export interface PanelState {
   rows: PanelRow[];
   checked: Set<string>;
   index: boolean;
+  /** Connector ids archived (shared across Macs, in <sources-dir>/archived.json). */
+  archived: Set<string>;
   /** 0 is the "index after sync" line, then one per row. */
   cursor: number;
   dirty: boolean;
 }
 
-export type PanelKey = 'up' | 'down' | 'top' | 'bottom' | 'toggle' | 'auto' | 'all' | 'none';
+export type PanelKey = 'up' | 'down' | 'top' | 'bottom' | 'toggle' | 'auto' | 'all' | 'none' | 'archive';
 
-export function panelRows(statuses: SourceStatus[]): PanelRow[] {
+export function panelRows(statuses: SourceStatus[], busy: Record<string, { device: string; at: string }> = {}): PanelRow[] {
   return statuses.filter(isSyncable).map((status) => ({
     status,
+    busy: busy[status.id],
     otherMacs: statuses
       .filter((o) => o.parent === status.id && o.id !== `${status.id} (shared)`)
       .map((o) => o.id.slice(status.id.length + 1)),
   }));
 }
 
-export function initialState(statuses: SourceStatus[], settings: Settings): PanelState {
-  const rows = panelRows(statuses);
+export function initialState(
+  statuses: SourceStatus[],
+  settings: Settings,
+  archived: Set<string> = new Set(),
+  busy: Record<string, { device: string; at: string }> = {}
+): PanelState {
+  const rows = panelRows(statuses, busy);
   return {
     rows,
     checked: new Set(rows.filter((r) => isSelected(r.status, settings)).map((r) => r.status.id)),
     index: settings.indexAfterSync ?? true,
+    archived: new Set(archived),
     cursor: 1,
     dirty: false,
   };
@@ -68,14 +79,20 @@ export function reduce(state: PanelState, key: PanelKey): PanelState {
       return { ...state, cursor: last };
     case 'toggle':
       if (state.cursor === 0) return { ...state, index: !state.index, dirty: true };
-      if (!row || !canSync(row.status)) return state;
+      if (!row || !canSync(row.status) || state.archived.has(row.status.id)) return state;
       return set([row.status.id], !state.checked.has(row.status.id));
     case 'auto':
       if (state.cursor === 0) return { ...state, index: true, dirty: true };
       if (!row || !canSync(row.status)) return state;
       return set([row.status.id], autoSelected(row.status));
     case 'all':
-      return set(state.rows.filter((r) => canSync(r.status)).map((r) => r.status.id), true);
+      return set(state.rows.filter((r) => canSync(r.status) && !state.archived.has(r.status.id)).map((r) => r.status.id), true);
+    case 'archive': {
+      if (!row) return state;
+      const archived = new Set(state.archived);
+      archived.has(row.status.id) ? archived.delete(row.status.id) : archived.add(row.status.id);
+      return { ...state, archived, dirty: true };
+    }
     case 'none':
       return set(state.rows.map((r) => r.status.id), false);
   }
@@ -91,15 +108,35 @@ const fmtWhen = (iso?: string) => {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
 };
 
+/** Checked and not archived: what a bare sync will actually run. */
+export function willSync(state: PanelState, id: string): boolean {
+  return state.checked.has(id) && !state.archived.has(id);
+}
+
 /** "connected as casey", "not connected: otso auth arena", "app not on this Mac" */
-export function statusLabel(s: SourceStatus): { text: string; ok: boolean } {
-  if (s.kind === 'api') return s.connected ? { text: `connected${s.account ? ` as ${s.account}` : ''}`, ok: true } : { text: `not connected: otso auth ${s.id}`, ok: false };
+export function statusLabel(s: SourceStatus, archived = false): { text: string; ok: boolean } {
+  if (archived) return { text: 'archived (every Mac)', ok: false };
+  if (s.kind === 'api') return s.connected ? { text: `connected${s.account ? ` as ${s.account}` : ''}`, ok: true } : { text: 'not connected', ok: false };
   if (!s.onThisMac) return { text: 'app not on this Mac', ok: false };
   if (!s.dbExists && !s.syncedAnywhere) return { text: 'on this Mac, never synced', ok: true };
   return { text: 'on this Mac', ok: true };
 }
 
+/** The line under the list for the focused source: what to do next. */
+export function detailLine(row: PanelRow | undefined, state: PanelState): string {
+  if (!row) return 'Index after sync: run otso index after each sync, by hand or on the schedule. Turn it off on a Mac that does not hold the index.';
+  const s = row.status;
+  if (state.archived.has(s.id)) return `${s.displayName} is archived: kept and searchable, never synced, on every Mac. a to unarchive.`;
+  if (s.kind === 'api' && !s.connected) return `Connect it first: otso auth ${s.id}`;
+  if (s.kind === 'local' && !s.onThisMac) return `${s.displayName} isn't installed on this Mac, so another Mac has to sync it.`;
+  const auto = autoSelected(s);
+  const on = state.checked.has(s.id);
+  if (on === auto) return on ? 'Synced by default. Space to skip it on this Mac.' : 'Not synced by default (never synced yet). Space to include it.';
+  return on ? 'Always synced on this Mac. r for the automatic choice.' : 'Skipped on this Mac. r for the automatic choice.';
+}
+
 export function lastSyncLabel(row: PanelRow, device: string): string {
+  if (row.busy) return `syncing now on ${row.busy.device === device ? 'this Mac' : row.busy.device} (since ${fmtWhen(row.busy.at)})`;
   const run = row.status.lastRun;
   if (!run) return row.otherMacs.length ? `other Macs: ${row.otherMacs.join(', ')}` : 'never';
   const who = run.device && run.device !== device ? ` from ${run.device}` : '';
@@ -113,14 +150,16 @@ function Panel(props: {
   statuses: SourceStatus[];
   settings: Settings;
   device: string;
-  onSave: (sync: Record<string, boolean>, index: boolean) => Promise<void>;
+  archived: Set<string>;
+  busy: Record<string, { device: string; at: string }>;
+  onSave: (result: PanelResult) => Promise<void>;
   onExit: (message?: string) => void;
 }) {
   const { width, height } = useTerminalDimensions();
-  const [state, setState] = useState(() => initialState(props.statuses, props.settings));
+  const [state, setState] = useState(() => initialState(props.statuses, props.settings, props.archived, props.busy));
   const [confirmQuit, setConfirmQuit] = useState(false);
   const [scroll, setScroll] = useState(0);
-  const listHeight = Math.max(3, height - 12);
+  const listHeight = Math.max(3, height - 13);
 
   useEffect(() => {
     const i = state.cursor - 1;
@@ -130,8 +169,14 @@ function Panel(props: {
 
   const save = async () => {
     const sync = choicesFor(props.statuses, state.checked, props.settings.sync);
-    await props.onSave(sync, state.index);
-    props.onExit(`✓ Saved. A bare otso sync on this Mac now runs ${state.checked.size} source${state.checked.size === 1 ? '' : 's'}${state.index ? ', then indexes' : ''}.`);
+    const archive = [...state.archived].filter((id) => !props.archived.has(id));
+    const unarchive = [...props.archived].filter((id) => !state.archived.has(id));
+    await props.onSave({ sync, index: state.index, archive, unarchive });
+    const n = state.rows.filter((r) => willSync(state, r.status.id)).length;
+    const lines = [`✓ Saved. A bare otso sync on this Mac now runs ${n} source${n === 1 ? '' : 's'}${state.index ? ', then indexes' : ''}.`];
+    if (archive.length) lines.push(`  Archived on every Mac: ${archive.join(', ')}`);
+    if (unarchive.length) lines.push(`  Unarchived: ${unarchive.join(', ')}`);
+    props.onExit(lines.join('\n'));
   };
 
   useKeyboard((key) => {
@@ -141,7 +186,7 @@ function Panel(props: {
       else setConfirmQuit(false);
       return;
     }
-    const map: Record<string, PanelKey> = { up: 'up', k: 'up', down: 'down', j: 'down', g: 'top', home: 'top', end: 'bottom', space: 'toggle', x: 'toggle', a: 'auto', A: 'all', N: 'none' };
+    const map: Record<string, PanelKey> = { up: 'up', k: 'up', down: 'down', j: 'down', g: 'top', home: 'top', end: 'bottom', space: 'toggle', x: 'toggle', r: 'auto', a: 'archive', A: 'all', N: 'none' };
     const name = key.shift && key.name?.length === 1 ? key.name.toUpperCase() : key.name;
     if (name === 'G') return setState((s) => reduce(s, 'bottom'));
     if (name && map[name]) return setState((s) => reduce(s, map[name]));
@@ -156,7 +201,7 @@ function Panel(props: {
   const statusW = 30;
   const rowsW = 10;
   const visible = state.rows.slice(scroll, scroll + listHeight);
-  const count = state.checked.size;
+  const count = state.rows.filter((r) => willSync(state, r.status.id)).length;
 
   return (
     <box flexDirection="column" width={width} height={height} padding={1}>
@@ -164,7 +209,9 @@ function Panel(props: {
         <text>
           <strong>SOURCES FOR otso sync</strong>
         </text>
-        <text fg={C.dim}>on {props.device}</text>
+        <text fg={C.dim}>
+          on {props.device} · {count} selected{state.dirty ? ' · unsaved' : ''}
+        </text>
       </box>
       <text fg={C.dim}>What a bare `otso sync` and the hourly schedule run on this Mac. Other Macs keep their own choices.</text>
       <box height={1} />
@@ -173,7 +220,7 @@ function Panel(props: {
         <text fg={state.cursor === 0 ? C.accent : C.dim}>{state.cursor === 0 ? '▸ ' : '  '}</text>
         <text fg={state.index ? C.accent : C.dim}>[{state.index ? '✓' : ' '}]</text>
         <text fg={state.cursor === 0 ? '#FFFFFF' : C.text}> Index after sync</text>
-        <text fg={C.dim}>  rebuild the search index when a sync brings in something</text>
+        <text fg={C.dim}>  run otso index after each sync</text>
       </box>
       <box height={1} />
 
@@ -190,11 +237,12 @@ function Panel(props: {
           const idx = scroll + i + 1;
           const focused = idx === state.cursor;
           const s = row.status;
-          const can = canSync(s);
+          const arch = state.archived.has(s.id);
+          const can = canSync(s) && !arch;
           const on = state.checked.has(s.id);
-          const st = statusLabel(s);
-          const changed = can && on !== isSelected(s, props.settings);
-          const mark = !can ? '–' : on ? '✓' : ' ';
+          const st = statusLabel(s, arch);
+          const changed = arch !== props.archived.has(s.id) || (can && on !== isSelected(s, props.settings));
+          const mark = arch ? 'a' : !can ? '–' : on ? '✓' : ' ';
           // Mark choices that differ from the automatic rule, and unsaved edits.
           const tag = changed ? ' *' : can && on !== autoSelected(s) ? (on ? ' · always' : ' · skipped') : '';
           return (
@@ -217,23 +265,32 @@ function Panel(props: {
         {scroll + listHeight < state.rows.length && <text fg={C.dim}>  ↓ {state.rows.length - scroll - listHeight} more</text>}
       </box>
 
-      <box flexDirection="row" justifyContent="space-between" width={width - 2}>
+      <text fg={C.mid}>{detailLine(state.rows[state.cursor - 1], state).slice(0, width - 2)}</text>
+      <box flexDirection="row">
         {confirmQuit ? (
           <text fg={C.warn}>Discard your changes? y: discard · s: save · any other key: keep editing</text>
         ) : (
-          <text fg={C.dim}>↑↓ move · space toggle · a automatic · A all · N none · enter save · esc quit</text>
+          <text fg={C.dim}>↑↓ move · space toggle · r automatic · a archive · A all · N none · enter save · esc quit</text>
         )}
-        <text fg={C.dim}>{count} selected{state.dirty ? ' · unsaved' : ''}</text>
       </box>
     </box>
   );
+}
+
+export interface PanelResult {
+  sync: Record<string, boolean>;
+  index: boolean;
+  archive: string[];
+  unarchive: string[];
 }
 
 export async function runSourcesPanel(opts: {
   statuses: SourceStatus[];
   settings: Settings;
   device: string;
-  onSave: (sync: Record<string, boolean>, index: boolean) => Promise<void>;
+  archived: Set<string>;
+  busy: Record<string, { device: string; at: string }>;
+  onSave: (result: PanelResult) => Promise<void>;
 }): Promise<void> {
   const renderer = await createCliRenderer({ exitOnCtrlC: true });
   await new Promise<void>((resolve) => {

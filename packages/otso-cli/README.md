@@ -106,24 +106,49 @@ pnpm otso log --source lastfm   # one source over time
 pnpm otso log --kind sync -n 30 --json
 ```
 
-## Running on a schedule
+## Archiving sources you no longer use
 
-`otso sync` with no arguments syncs every connected API source and every local source that's on this Mac and has been synced before (by any Mac). Each source reports what's new and what's already stored, and when and from which Mac it was last synced. To also index, add `--index`:
+When you've stopped using a service, archive it. Its data stays in the archive and in search, `otso sync` and the scheduled sync skip it, and the Coverage page in otso-search moves it to an Archived group instead of flagging it as quiet.
 
-```bash
-cd ~/GitHub/otso && pnpm otso sync --index
+```sh
+pnpm otso archive foursquare     # stop syncing it
+pnpm otso archive                # list archived sources
+pnpm otso unarchive foursquare   # sync it again
 ```
 
-To sync on a timer, install a launchd agent from a checkout outside `~/Documents` (launchd agents can't read it):
+The list is kept in `<sources-dir>/archived.json`, so every Mac syncing into the same sources-dir shares it. Archiving a name covers its per-device and per-account variants too: `safari` covers every Mac's Safari history, while `safari-old-mac` covers only that Mac. The Coverage page can archive and unarchive sources as well.
+
+## Choosing what `otso sync` runs
+
+`otso sync` with no arguments runs the sources chosen for this Mac. Out of the box that's every connected API source and every local source that's on this Mac and has been synced before (by any Mac). To change it, open the panel:
 
 ```bash
-pnpm otso schedule install --every 60            # all sources, hourly
+pnpm otso config sources
+```
+
+It lists every source with its status (connected, app on this Mac, archived), how many rows it holds, and when and from which Mac it was last synced, or that another Mac is syncing it right now. Space ticks or unticks a source, `r` puts it back to the automatic choice, `a` archives or unarchives it (for every Mac), and enter saves. The top line turns **Index after sync** on or off.
+
+Choices are saved per Mac in `~/.otso/config/settings.json` as a `sync` map, and only for sources that differ from the automatic choice, so a newly connected account still joins by default. That is also how a source the Macs share (Timing, Notes, Messages) gets one Mac to sync it: untick it on the others. Without a terminal, or in scripts:
+
+```bash
+pnpm otso config sources --list
+pnpm otso config sources --off timing --on things   # --auto <source> to reset
+```
+
+After a sync in which at least one source synced, `otso sync` runs `otso index`, unless you turn that off in the panel or with `otso config set index-after-sync off`. `--index` and `--no-index` override it for one run.
+
+## Running on a schedule
+
+Each source reports what's new and what's already stored, and when and from which Mac it was last synced. To sync on a timer, install a launchd agent from a checkout outside `~/Documents` (launchd agents can't read it):
+
+```bash
+pnpm otso schedule install --every 60            # the sources chosen in otso config sources, hourly
 pnpm otso schedule install safari helium --every 30
 pnpm otso schedule status
 pnpm otso schedule uninstall
 ```
 
-Runs are logged to `~/Library/Logs/otso/sync.log`. Add `--index` only on the Mac that holds the index. Safari, Messages, Notes and Photos need Full Disk Access for the `bun` binary the agent runs (install prints its path).
+Without source names, each run reads the current choices, so changes in `otso config sources` apply from the next run without reinstalling. Runs are logged to `~/Library/Logs/otso/sync.log`. Indexing follows the index-after-sync setting; on a Mac that doesn't hold the index, turn it off there (or install with `--no-index`). Safari, Messages, Notes and Photos need Full Disk Access for the `bun` binary the agent runs (install prints its path).
 
 For non-interactive auth, set the credential fields as environment variables, for example `OTSO_ARENA_ACCESS_TOKEN`, `OTSO_LASTFM_USERNAME` and `OTSO_LASTFM_API_KEY`.
 
