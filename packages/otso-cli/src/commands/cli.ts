@@ -1,5 +1,5 @@
 import { execa } from 'execa';
-import { CONNECTORS, requireConnector } from '../connectors/index.js';
+import { CONNECTORS, getConnector, requireConnector } from '../connectors/index.js';
 import { deleteCredentials } from '../core/credentials.js';
 import { runIndexer } from '../core/indexer.js';
 import { join, resolve } from 'node:path';
@@ -94,13 +94,13 @@ export async function authCommand(id: string, opts: { logout?: boolean; open?: b
 }
 
 export async function syncCommand(ids: string[], opts: { full?: boolean; index?: boolean }) {
-  // With no names: every connected API, and every local app that's on this
-  // Mac and has been synced before (by this Mac or another one).
-  const requested = ids.length
-    ? ids
-    : (await sourceStatuses())
-        .filter((s) => (s.kind === 'api' ? s.connected : s.kind === 'local' && s.onThisMac && (s.dbExists || s.syncedAnywhere)))
-        .map((s) => s.id);
+  // With no names: the sources chosen for this Mac in `otso config sources`,
+  // which start out as every connected API and every local app installed
+  // on this Mac.
+  const { selectedSources, indexAfterSync } = await import('../core/selection.js');
+  const requested = ids.length ? ids : selectedSources(await sourceStatuses());
+  // --index / --no-index win; otherwise the setting (on unless turned off).
+  const index = opts.index ?? indexAfterSync();
   // Archived sources are kept but never synced, even when named
   const archived = archivedSources();
   const device = archived.length ? await getDeviceName().catch(() => undefined) : undefined;
@@ -112,7 +112,9 @@ export async function syncCommand(ids: string[], opts: { full?: boolean; index?:
   }
   if (!targets.length) {
     if (!skippedArchived.length) {
-      console.log('Nothing to sync yet. Connect a service with `otso auth <source>`, or run `otso sync <local source>`.');
+      console.log(
+        'Nothing to sync yet. Connect a service with `otso auth <source>`, run `otso sync <local source>`, or choose sources with `otso config sources`.'
+      );
     }
     return;
   }
@@ -164,7 +166,7 @@ export async function syncCommand(ids: string[], opts: { full?: boolean; index?:
     }
   }
   await logRun();
-  if (opts.index && synced) await indexCommand({});
+  if (index && synced) await indexCommand({});
   if (failed) process.exitCode = 1;
 }
 
@@ -268,15 +270,29 @@ export function sourcesCommand() {
   console.log(`\nConfig: ${displayPath(getSourcesTomlPath())}`);
 }
 
-const SETTING_KEYS = { 'data-dir': 'dataDir', 'sources-dir': 'sourcesDir', indexer: 'indexerPath', device: 'device' } as const;
+const SETTING_KEYS = {
+  'data-dir': 'dataDir',
+  'sources-dir': 'sourcesDir',
+  indexer: 'indexerPath',
+  device: 'device',
+  'index-after-sync': 'indexAfterSync',
+} as const;
 
-export async function configCommand(action?: string, key?: string, value?: string) {
+const parseBool = (v: string) => {
+  if (/^(true|yes|on|1)$/i.test(v)) return true;
+  if (/^(false|no|off|0)$/i.test(v)) return false;
+  fail(`Expected on or off, got "${v}"`);
+};
+
+export async function configCommand(action?: string, key?: string, value?: string, opts: ConfigSourcesOptions = {}) {
+  if (action === 'sources') return configSourcesCommand(opts);
   if (action === 'set' || action === 'unset') {
     const k = SETTING_KEYS[key as keyof typeof SETTING_KEYS];
     if (!k) fail(`Unknown setting "${key}". Settings: ${Object.keys(SETTING_KEYS).join(', ')}`);
     if (action === 'set' && !value) fail(`Usage: otso config set ${key} <value>`);
     const settings = readSettings();
-    if (action === 'set') settings[k] = key === 'indexer' ? value : key === 'device' ? slugDevice(value!) : resolve(expandHome(value!));
+    if (action === 'set' && k === 'indexAfterSync') settings.indexAfterSync = parseBool(value!);
+    else if (action === 'set') (settings as Record<string, unknown>)[k] = key === 'indexer' ? value : key === 'device' ? slugDevice(value!) : resolve(expandHome(value!));
     else delete settings[k];
     await writeSettings(settings);
     console.log(action === 'set' ? `✓ ${key} = ${settings[k]}` : `✓ ${key} reset to default`);
@@ -289,12 +305,105 @@ export async function configCommand(action?: string, key?: string, value?: strin
   console.log(`credentials  ${displayPath(getConfigDir())}`);
   console.log(`indexer      ${settings.indexerPath ?? process.env.OTSO_INDEXER ?? '(repo build, or cargo run)'}`);
   console.log(`device       ${await getDeviceName()}${settings.device ? '' : '  (from hostname)'}`);
+  console.log(`index after sync ${(settings.indexAfterSync ?? true) ? 'on' : 'off'}${settings.indexAfterSync === undefined ? '  (default)' : ''}`);
   if (isNetworkPath(getDataRoot())) {
     console.log('\n⚠ data-dir is on a network share. Keep it local and set sources-dir to the share instead; the index needs a local disk.');
   } else if (isNetworkPath(getSourcesDir())) {
     console.log('\nsources-dir is on a network share: source databases there use a rollback journal instead of WAL.');
   }
-  console.log(`\nChange with: otso config set data-dir|sources-dir|indexer <path>, or otso config set device <name>`);
+  console.log(
+    `\nChange with: otso config set data-dir|sources-dir|indexer <path>, otso config set device <name>, otso config set index-after-sync on|off`
+  );
+  console.log('Choose what a bare otso sync runs on this Mac: otso config sources');
+}
+
+/** Connectors a bare sync skips because they (or this Mac's copy) are archived. */
+function archivedConnectors(statuses: { id: string }[], device: string): Set<string> {
+  const list = archivedSources();
+  return new Set(statuses.map((s) => s.id).filter((id) => isArchived(id, list) || isArchived(`${id}-${device}`, list)));
+}
+
+/**
+ * Sources another sync is writing right now: the <db>.lock a running sync
+ * keeps beside the database (see core/lock.ts), keyed by connector id.
+ */
+async function busySources(statuses: { id: string }[]): Promise<Record<string, { device: string; at: string }>> {
+  const { existsSync, readFileSync } = await import('node:fs');
+  const { syncTarget } = await import('../core/runner.js');
+  const out: Record<string, { device: string; at: string }> = {};
+  for (const { id } of statuses) {
+    const c = getConnector(id);
+    if (!c?.sync) continue;
+    const lock = join(getSourcesDir(), (await syncTarget(c)).dbPath) + '.lock';
+    if (!existsSync(lock)) continue;
+    try {
+      const info = JSON.parse(readFileSync(lock, 'utf8'));
+      if (typeof info?.device === 'string' && typeof info?.at === 'string') out[id] = { device: info.device, at: info.at };
+    } catch {
+      // half-written or gone: treat as not busy
+    }
+  }
+  return out;
+}
+
+export interface ConfigSourcesOptions {
+  on?: string;
+  off?: string;
+  auto?: string;
+  list?: boolean;
+}
+
+/**
+ * `otso config sources`: the panel in a terminal, a plain list otherwise
+ * (or with --list), and --on/--off/--auto for scripts.
+ */
+export async function configSourcesCommand(opts: ConfigSourcesOptions) {
+  const sel = await import('../core/selection.js');
+  const split = (v?: string) => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const edits = [
+    ['on', split(opts.on)],
+    ['off', split(opts.off)],
+    ['auto', split(opts.auto)],
+  ] as const;
+  if (edits.some(([, ids]) => ids.length)) {
+    for (const [, ids] of edits) ids.forEach((id) => requireConnector(id));
+    for (const [choice, ids] of edits) if (ids.length) await sel.setChoices(ids, choice);
+  }
+  const statuses = await sourceStatuses();
+  const device = await getDeviceName();
+  if (!opts.list && !edits.some(([, ids]) => ids.length) && process.stdin.isTTY && process.stdout.isTTY) {
+    const { runSourcesPanel } = await import('./sources-panel.js');
+    await runSourcesPanel({
+      statuses,
+      settings: readSettings(),
+      device,
+      archived: archivedConnectors(statuses, device),
+      busy: await busySources(statuses),
+      onSave: async (r) => {
+        await sel.saveSelection(r.sync, r.index);
+        if (r.archive.length) await archive(r.archive);
+        // An archived connector may be listed as itself or as this Mac's copy.
+        if (r.unarchive.length) await unarchive(r.unarchive.flatMap((id) => [id, `${id}-${device}`]));
+      },
+    });
+    return;
+  }
+  const { panelRows, statusLabel, lastSyncLabel } = await import('./sources-panel.js');
+  const settings = readSettings();
+  const archivedIds = archivedConnectors(statuses, device);
+  console.log(`A bare otso sync on ${device} runs:\n`);
+  for (const row of panelRows(statuses, await busySources(statuses))) {
+    const s = row.status;
+    const can = sel.canSync(s);
+    const on = sel.isSelected(s, settings);
+    const choice = sel.syncChoice(s.id, settings);
+    const arch = archivedIds.has(s.id);
+    const how = choice === 'auto' ? '' : choice === 'on' ? '  (always)' : '  (skipped)';
+    const mark = arch ? 'a' : !can ? '-' : on ? 'x' : ' ';
+    console.log(`  [${mark}] ${s.id.padEnd(16)} ${statusLabel(s, arch).text.padEnd(30)} ${lastSyncLabel(row, device)}${how}`);
+  }
+  console.log(`\nIndex after sync: ${sel.indexAfterSync(settings) ? 'on' : 'off'}`);
+  console.log('Change: otso config sources (interactive), or --on a,b --off c --auto d');
 }
 
 export async function migrateCommand(from: string, opts: { dir?: string; verify?: boolean; overwrite?: boolean }) {

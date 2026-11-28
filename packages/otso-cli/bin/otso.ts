@@ -17,6 +17,7 @@ Typical flow:
   otso sync safari                 read a local macOS database
   otso index                       rebuild the search index from data/sources
   otso schedule install --every 60 sync every hour from this Mac (launchd)
+  otso config sources              choose what a bare otso sync runs on this Mac
   otso status                      what's connected and how much is stored
   otso archive foursquare          stop syncing a source you no longer use (its data stays)
   otso log                         recent runs, and slow or failing sources`
@@ -52,9 +53,10 @@ program
 
 program
   .command('sync [sources...]')
-  .description('Fetch new data from API and local sources (all connected ones by default)')
+  .description('Fetch new data from API and local sources (with no names: the ones chosen in otso config sources)')
   .option('--full', 'Ignore saved cursors and re-fetch everything')
-  .option('-i, --index', 'Run the indexer afterwards')
+  .option('-i, --index', 'Run the indexer afterwards (the default, unless index-after-sync is off)')
+  .option('--no-index', "Don't run the indexer afterwards")
   .action(async (sources, opts) => (await import('../src/commands/cli.js')).syncCommand(sources, opts));
 
 program
@@ -82,8 +84,14 @@ program
 
 program
   .command('config [action] [key] [value]')
-  .description('Show where otso keeps data, or: config set data-dir|sources-dir|indexer <path> | config unset <key>')
-  .action(async (action, key, value) => (await import('../src/commands/cli.js')).configCommand(action, key, value));
+  .description(
+    'Show where otso keeps data, or: config sources (choose what a bare sync runs) | config set data-dir|sources-dir|indexer|device|index-after-sync <value> | config unset <key>'
+  )
+  .option('--on <sources>', 'config sources: always sync these on this Mac (comma-separated)')
+  .option('--off <sources>', 'config sources: never sync these on this Mac')
+  .option('--auto <sources>', 'config sources: back to the automatic rule')
+  .option('--list', 'config sources: print the list instead of opening the panel')
+  .action(async (action, key, value, opts) => (await import('../src/commands/cli.js')).configCommand(action, key, value, opts));
 
 program
   .command('migrate <from>')
@@ -104,7 +112,8 @@ program
   .command('schedule [action] [sources...]')
   .description('Sync on a timer with a launchd agent: schedule install [sources...] | uninstall | status')
   .option('--every <minutes>', 'How often to sync', '60')
-  .option('-i, --index', 'Run the indexer after each sync (on the Mac that holds the index)')
+  .option('-i, --index', 'Always run the indexer after each sync')
+  .option('--no-index', 'Never run the indexer after each sync (otherwise index-after-sync decides)')
   .option('--dry-run', 'Print the launchd plist instead of installing it')
   .action(async (action, sources, opts) => {
     try {

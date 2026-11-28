@@ -21,6 +21,10 @@ describe('otso schedule', () => {
     expect(plist).toContain('<string>sync</string>\n    <string>safari</string>\n    <string>helium</string>');
     expect(plist).toContain('<string>/tmp/a&amp;b</string>');
     expect(plist).not.toContain('--index');
+    // undefined follows index-after-sync at run time; true/false pin it.
+    expect(launchdPlist({ bun: 'b', entry: 'e', workingDirectory: 'w', sources: [], everyMinutes: 60 })).not.toContain('index');
+    expect(launchdPlist({ bun: 'b', entry: 'e', workingDirectory: 'w', sources: [], everyMinutes: 60, index: false })).toContain('<string>--no-index</string>');
+    expect(launchdPlist({ bun: 'b', entry: 'e', workingDirectory: 'w', sources: [], everyMinutes: 60, index: true })).toContain('<string>--index</string>');
     if (process.platform === 'darwin') {
       const f = join(mkdtempSync(join(tmpdir(), 'otso-plist-')), 'p.plist');
       writeFileSync(f, plist);

@@ -24,12 +24,13 @@ export interface ScheduleOptions {
   workingDirectory: string;
   sources: string[];
   everyMinutes: number;
-  index: boolean;
+  /** true/false pins --index/--no-index; undefined follows index-after-sync at run time. */
+  index?: boolean;
   env?: Record<string, string>;
 }
 
 export function launchdPlist(o: ScheduleOptions): string {
-  const args = [o.bun, o.entry, 'sync', ...o.sources, ...(o.index ? ['--index'] : [])];
+  const args = [o.bun, o.entry, 'sync', ...o.sources, ...(o.index === true ? ['--index'] : o.index === false ? ['--no-index'] : [])];
   const env = {
     HOME: homeDir(),
     PATH: [dirname(o.bun), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':'),
@@ -92,7 +93,7 @@ export async function scheduleCommand(
     const bun = process.execPath;
     const env: Record<string, string> = {};
     for (const k of ['OTSO_CONFIG_DIR', 'OTSO_DATA_DIR', 'OTSO_SOURCES_DIR']) if (process.env[k]) env[k] = process.env[k]!;
-    const plist = launchdPlist({ bun, entry, workingDirectory: root, sources, everyMinutes: every, index: !!opts.index, env });
+    const plist = launchdPlist({ bun, entry, workingDirectory: root, sources, everyMinutes: every, index: opts.index, env });
 
     if (opts.dryRun) {
       console.log(plist);
@@ -105,7 +106,11 @@ export async function scheduleCommand(
     const r = await launchctl('bootstrap', domain, plistPath());
     if (r.exitCode !== 0) throw new Error(`launchctl bootstrap failed: ${r.stderr || r.stdout}`);
 
-    console.log(`✓ Syncing ${sources.length ? sources.join(', ') : 'every connected source'} every ${every} minutes${opts.index ? ', then indexing' : ''}`);
+    const indexing = opts.index === true ? ', then indexing' : opts.index === false ? ', without indexing' : '';
+    console.log(
+      `✓ Syncing ${sources.length ? sources.join(', ') : 'the sources chosen in otso config sources'} every ${every} minutes${indexing}`
+    );
+    if (!sources.length) console.log('  Change what runs, and whether it indexes afterwards, with: otso config sources');
     console.log(`  Agent: ${displayPath(plistPath())}`);
     console.log(`  Log:   ${displayPath(logPath())}`);
     const home = homeDir();
