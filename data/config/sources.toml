@@ -626,6 +626,30 @@ SELECT
 FROM events
 """
 
+# DEVONthink records from every open database.
+[[sources]]
+name = "devonthink"
+enabled = true
+db_path = "devonthink/chronicle/chronicle.db"
+category = "notes"
+
+[[sources.queries]]
+table = "events"
+entry_type = "document"
+action_type = "CreateAction"
+object_type = "DigitalDocument"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    TRIM(COALESCE(description, '') || char(10) || COALESCE(text, '') || char(10) ||
+      COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.keywords')) k), '') || ' ' ||
+      COALESCE(json_extract(object, '$.location'), '')) as content,
+    dateCreated as occurred_at,
+    COALESCE(json_extract(object, '$.url'), 'x-devonthink-item://' || source_id) as url
+FROM events
+"""
+
 [[sources]]
 name = "notion"
 enabled = true
