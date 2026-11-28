@@ -81,6 +81,10 @@ export function mapChronicleCredentials(dir: string): Record<string, Credentials
   const readwise = tokenFor('readwise', /^readwise-/);
   if (usable(readwise)) out.readwise = { accessToken: readwise };
 
+  // Chronicle kept a Mastodon instance and token in each job's options.
+  const masto = jobOptions(/^mastodon-/).find((o) => usable(o.instance) && usable(o.access_token));
+  if (masto) out.mastodon = { instance: masto.instance, accessToken: masto.access_token };
+
   return out;
 }
 
