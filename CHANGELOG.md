@@ -24,6 +24,7 @@ All notable changes to Otso are recorded here. The format is based on
 
 ### Fixed
 
+- A scheduled `otso sync` no longer crashes before syncing anything when another Mac replaces a source database on the share while it's being read (`SQLITE_IOERR_VNODE`). That source's row count is left out of the status instead.
 - Events from an indexer run that was interrupted part way come back on the next `otso index`. Before, they were dropped from the event store for good. [#38](https://github.com/otso-run/otso/pull/38)
 - Reader syncs wait out Readwise's rate limit instead of failing part way through a large pull. [#38](https://github.com/otso-run/otso/pull/38)
 - A large source no longer fails a fresh `otso index` with "database is locked" when several sources write at once. [#39](https://github.com/otso-run/otso/pull/39)
