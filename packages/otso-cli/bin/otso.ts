@@ -2,6 +2,12 @@
 
 import { program } from 'commander';
 
+// A bare `otso` in a terminal opens the app; every command is under --help.
+if (process.argv.length <= 2 && process.stdin.isTTY && process.stdout.isTTY) {
+  await (await import('../src/commands/cli.js')).appCommand();
+  process.exit(process.exitCode ?? 0);
+}
+
 program
   .name('otso')
   .description('Otso - Own your digital trails')
@@ -9,6 +15,8 @@ program
   .addHelpText(
     'after',
     `
+Run otso with no arguments to open the app (sources, sync, import, status, settings).
+
 Typical flow:
   otso sources                     list what can be imported and how
   otso auth arena                  connect an API source (token saved to ~/.otso/config)

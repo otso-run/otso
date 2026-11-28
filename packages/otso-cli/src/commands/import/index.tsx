@@ -16,9 +16,11 @@ interface ImportOptions {
 
 interface ImportAppProps {
   options: ImportOptions;
+  /** Inside the otso app: go back to its home screen instead of exiting. */
+  onQuit?: () => void;
 }
 
-function ImportApp({ options }: ImportAppProps) {
+export function ImportApp({ options, onQuit }: ImportAppProps) {
   const { width, height } = useTerminalDimensions();
   const [screen, setScreen] = useState<ImportScreen>('welcome');
   const [currentSource, setCurrentSource] = useState<SourceMeta | null>(null);
@@ -27,7 +29,8 @@ function ImportApp({ options }: ImportAppProps) {
   // Handle global keyboard shortcuts
   useKeyboard((key) => {
     if (key.name === 'q' && key.ctrl) {
-      process.exit(0);
+      if (onQuit) onQuit();
+      else process.exit(0);
     }
   });
 
@@ -75,7 +78,8 @@ function ImportApp({ options }: ImportAppProps) {
   };
 
   const handleQuit = () => {
-    process.exit(0);
+    if (onQuit) onQuit();
+    else process.exit(0);
   };
 
   // Render current screen

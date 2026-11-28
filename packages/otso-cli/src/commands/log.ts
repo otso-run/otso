@@ -98,7 +98,7 @@ function breakdown(s: SourceRun): string {
   return parts.join(' ');
 }
 
-function runLine(r: RunEntry): string {
+export function runLine(r: RunEntry): string {
   const failed = r.sources.filter((s) => !s.ok);
   const status = r.ok ? '✓' : '✗';
   const what = `${r.sources.length} source${r.sources.length === 1 ? '' : 's'}`;
