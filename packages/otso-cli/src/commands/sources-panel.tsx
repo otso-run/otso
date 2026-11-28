@@ -146,7 +146,7 @@ export function lastSyncLabel(row: PanelRow, device: string): string {
 
 const C = { accent: '#00D4AA', dim: '#666666', mid: '#888888', text: '#DDDDDD', warn: '#FFB800', off: '#444444' };
 
-function Panel(props: {
+export function SourcesPanel(props: {
   statuses: SourceStatus[];
   settings: Settings;
   device: string;
@@ -299,7 +299,7 @@ export async function runSourcesPanel(opts: {
       if (message) console.log(message);
       resolve();
     };
-    createRoot(renderer).render(<Panel {...opts} onExit={onExit} />);
+    createRoot(renderer).render(<SourcesPanel {...opts} onExit={onExit} />);
   });
 }
 

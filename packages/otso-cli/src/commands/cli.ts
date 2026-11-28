@@ -327,7 +327,7 @@ function archivedConnectors(statuses: { id: string }[], device: string): Set<str
  * Sources another sync is writing right now: the <db>.lock a running sync
  * keeps beside the database (see core/lock.ts), keyed by connector id.
  */
-async function busySources(statuses: { id: string }[]): Promise<Record<string, { device: string; at: string }>> {
+export async function busySources(statuses: { id: string }[]): Promise<Record<string, { device: string; at: string }>> {
   const { existsSync, readFileSync } = await import('node:fs');
   const { syncTarget } = await import('../core/runner.js');
   const out: Record<string, { device: string; at: string }> = {};
@@ -344,6 +344,13 @@ async function busySources(statuses: { id: string }[]): Promise<Record<string, {
     }
   }
   return out;
+}
+
+/** `otso` with no arguments: the app, then a sync if it asked for one. */
+export async function appCommand() {
+  const { runApp, loadAppData } = await import('./app.js');
+  const exit = await runApp({ load: () => loadAppData(busySources), busy: busySources });
+  if (exit.action === 'sync') await syncCommand([], {});
 }
 
 export interface ConfigSourcesOptions {

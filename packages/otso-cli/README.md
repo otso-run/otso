@@ -3,8 +3,10 @@
 Connects your services to otso, keeps local copies of your data, and builds the search index.
 
 ```bash
-pnpm otso sources        # from the repo root; or `bun bin/otso.ts …` in this folder
+pnpm otso                # from the repo root; or `bun bin/otso.ts` in this folder
 ```
+
+A bare `otso` in a terminal opens the otso app. Its home screen leads to **Sources** (what `otso sync` runs on this Mac, archiving), **Sync now** (leaves the app and runs a bare `otso sync`), **Import** (the guided setup for accounts and exports), **Status and log** (what each source holds and recent runs) and **Settings** (index after sync, this Mac's name, where data lives). Press a number or use the arrows, and esc to go back. Every step is also a plain command for scripts and schedules: `otso --help` lists them, and `otso sources` lists what can be imported.
 
 ## How each source gets in
 
@@ -14,7 +16,7 @@ pnpm otso sources        # from the repo root; or `bun bin/otso.ts …` in this 
 | Export | Spotify, Claude, LinkedIn, Twitter/X, Google Takeout, Gmail (plus Pinboard JSON and Last.fm CSV) | `otso ingest <source>` shows how to request the archive and opens the page; when it arrives, `otso ingest <source> ~/Downloads/<file>` |
 | Local | Safari, Helium, Messages, Apple Notes, Apple Photos, Apple Podcasts, Things 3, Timing | `otso sync <source>` reads a temporary copy of the app's database. Safari, Messages, Notes and Photos need Full Disk Access for your terminal |
 
-`otso import` runs the same steps as a guided terminal UI.
+`otso import` opens the guided setup on its own; it's also the app's Import section.
 
 Coming from chronicle-etl? `otso migrate chronicle` reads `~/.config/chronicle/etl` (secrets and job files), verifies each token with its service, and saves the working ones to `~/.otso/config`. It never prints values and doesn't change the chronicle files.
 
@@ -120,7 +122,7 @@ The list is kept in `<sources-dir>/archived.json`, so every Mac syncing into the
 
 ## Choosing what `otso sync` runs
 
-`otso sync` with no arguments runs the sources chosen for this Mac. Out of the box that's every connected API source and every local app installed on this Mac, including one that has never been synced, so a newly installed app is picked up on the next run. To change it, open the panel:
+`otso sync` with no arguments runs the sources chosen for this Mac. Out of the box that's every connected API source and every local app installed on this Mac, including one that has never been synced, so a newly installed app is picked up on the next run. To change it, open **Sources** in the app (`pnpm otso`), or go straight there:
 
 ```bash
 pnpm otso config sources
