@@ -5,13 +5,13 @@ import type { SearchBackend, SearchResponse, StatsResponse, TimelineResponse, Da
 // Path to Otso's FTS5 search database
 // In dev: cwd is packages/otso-search, so ../../data/otso/search.db
 // In production: adjust as needed
-const DB_PATH = process.env.OTSO_DATA_DIR
+export const DB_PATH = process.env.OTSO_DATA_DIR
   ? path.join(process.env.OTSO_DATA_DIR, 'otso', 'search.db')
   : path.join(process.cwd(), '../../data/otso/search.db');
 
 let db: Database.Database | null = null;
 
-function getDb(): Database.Database {
+export function getDb(): Database.Database {
   if (!db) {
     db = new Database(DB_PATH, { readonly: true });
     if (process.env.OTSO_SQLITE_JOURNAL !== 'delete') db.pragma('journal_mode = WAL');

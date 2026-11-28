@@ -52,6 +52,9 @@ pids
 
 # Coverage directory used by tools like istanbul
 coverage/
+# ...but not otso-search's coverage page and API route
+!packages/otso-search/src/routes/coverage/
+!packages/otso-search/src/routes/api/coverage/
 *.lcov
 
 # nyc test coverage
