@@ -1,11 +1,20 @@
 import { EVENTS_TABLE } from '../core/chronicle.js';
+import { saveCredentials, type Credentials } from '../core/credentials.js';
+import { getJson, HttpError } from '../core/http.js';
+import { redirectUri, waitForAuthorizationCode } from '../core/oauth.js';
 import { iso } from '../core/time.js';
 import type { Connector, RunStats } from './types.js';
 import { addStats } from './util.js';
 
 /**
- * Spotify has no history API beyond the last 50 plays, so this reads the
- * privacy export. Both kinds are understood:
+ * Spotify's API only remembers the last 50 plays, so the full history comes
+ * from the privacy export, and `otso sync spotify` keeps it going from there:
+ * run on a schedule, it picks up recent plays before they fall off that list.
+ * Synced plays use the same key as the export's (end time + track URI), so a
+ * later export lines up with them. Signing in needs your own Spotify
+ * developer app with redirect URI http://127.0.0.1:8765/callback.
+ *
+ * Export kinds understood:
  *   Extended streaming history  Streaming_History_Audio_*.json (full, keyed by ts + uri)
  *   Account data                StreamingHistory_music_*.json / StreamingHistory*.json (past year)
  * Plays shorter than 30 seconds are left out, which is Spotify's own
@@ -70,13 +79,111 @@ export function accountRows(items: any[]) {
   return rows;
 }
 
+const ACCOUNTS = 'https://accounts.spotify.com';
+const API = 'https://api.spotify.com/v1';
+
+/** A play from /me/player/recently-played, keyed like the export's rows. */
+export function recentRow(item: any) {
+  const t = item.track ?? {};
+  const end = iso(item.played_at);
+  const isEpisode = t.type === 'episode';
+  return {
+    source_id: `listen-${end}-${t.uri ?? t.name}`,
+    type: 'ListenAction',
+    source: 'spotify',
+    object: {
+      name: t.name,
+      byArtist: isEpisode ? [{ name: t.show?.name }] : (t.artists ?? []).map((a: any) => ({ name: a.name })),
+      inAlbum: isEpisode ? undefined : { name: t.album?.name },
+      partOfSeries: isEpisode ? { name: t.show?.name } : undefined,
+      url: t.external_urls?.spotify ?? trackUrl(t.uri),
+    },
+    result: { duration_ms: t.duration_ms, context: item.context?.type ?? null },
+    startTime: t.duration_ms && end ? iso(Date.parse(end) - t.duration_ms) : null,
+    endTime: end,
+  };
+}
+
+async function token(creds: Credentials, body: Record<string, string>) {
+  const basic = Buffer.from(`${creds.clientId}:${creds.clientSecret}`).toString('base64');
+  return getJson<any>(`${ACCOUNTS}/api/token`, {
+    method: 'POST',
+    headers: { Authorization: `Basic ${basic}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(body).toString(),
+  });
+}
+
 export const spotify: Connector = {
   id: 'spotify',
   displayName: 'Spotify',
   description: 'Streaming history',
-  kind: 'export',
+  kind: 'api',
   dbPath: 'spotify/chronicle/chronicle.db',
   tables: [EVENTS_TABLE],
+
+  auth: {
+    setupUrl: 'https://developer.spotify.com/dashboard',
+    instructions: [
+      'Create an app at developer.spotify.com/dashboard (Web API) with redirect URI http://127.0.0.1:8765/callback.',
+      'Enter its client id and secret; your browser then opens to approve access to recently played tracks.',
+    ],
+    fields: [
+      { name: 'clientId', label: 'Client ID' },
+      { name: 'clientSecret', label: 'Client secret', secret: true },
+    ],
+    async verify(creds) {
+      if (!creds.refreshToken) {
+        const authorize = new URL(`${ACCOUNTS}/authorize`);
+        authorize.search = new URLSearchParams({
+          client_id: creds.clientId,
+          response_type: 'code',
+          redirect_uri: redirectUri(),
+          scope: 'user-read-recently-played',
+        }).toString();
+        const code = await waitForAuthorizationCode({ authorizeUrl: authorize.toString(), log: console.log });
+        const t = await token(creds, { grant_type: 'authorization_code', code, redirect_uri: redirectUri() });
+        if (!t?.refresh_token) throw new Error('Spotify did not return a refresh token');
+        creds.refreshToken = t.refresh_token;
+      }
+      const t = await token(creds, { grant_type: 'refresh_token', refresh_token: creds.refreshToken });
+      if (t?.refresh_token) creds.refreshToken = t.refresh_token;
+      const me = await getJson<any>(`${API}/me`, { headers: { Authorization: `Bearer ${t.access_token}` } }).catch(() => null);
+      return me?.display_name || me?.id || 'Spotify';
+    },
+  },
+
+  async sync({ store, credentials, log }) {
+    if (!credentials.refreshToken) throw new Error('Not signed in to Spotify. Run: otso auth spotify');
+    const t = await token(credentials, { grant_type: 'refresh_token', refresh_token: credentials.refreshToken });
+    if (!t?.access_token) throw new Error('Spotify did not accept the saved sign-in. Run: otso auth spotify');
+    // Spotify may hand out a new refresh token; the old one then stops working.
+    if (t.refresh_token && t.refresh_token !== credentials.refreshToken) {
+      await saveCredentials('spotify', { ...credentials, refreshToken: t.refresh_token });
+    }
+    const after = Number(store.getState('recent_after')) || 0;
+    const p = new URLSearchParams({ limit: '50' });
+    if (after) p.set('after', String(after));
+    let res: any;
+    try {
+      res = await getJson<any>(`${API}/me/player/recently-played?${p}`, { headers: { Authorization: `Bearer ${t.access_token}` } });
+    } catch (err) {
+      // Spotify only serves the Web API to apps whose owner has Premium.
+      if (err instanceof HttpError && err.status === 403 && /premium/i.test(err.body)) {
+        throw new Error(
+          "Spotify only allows recently played for apps whose owner has Spotify Premium. Upgrade the app owner's account, " +
+            'or stop syncing it with: otso auth spotify --logout (exports still work with otso ingest spotify).'
+        );
+      }
+      throw err;
+    }
+    const items: any[] = res?.items ?? [];
+    const stats: RunStats = {};
+    addStats(stats, 'events', store.upsert(EVENTS_TABLE, items.filter((i) => i.track && i.played_at).map(recentRow)));
+    const newest = Math.max(after, ...items.map((i) => Date.parse(i.played_at) || 0));
+    if (newest) store.setState('recent_after', String(newest));
+    log(`${items.length} recent plays${items.length === 50 ? ' (the most Spotify keeps; sync more often to miss none)' : ''}`);
+    return stats;
+  },
 
   exportGuide: {
     url: 'https://www.spotify.com/account/privacy/',
