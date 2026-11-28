@@ -14,11 +14,11 @@ export function highlighted(text: string | null | undefined): string {
     .replace(/&lt;\/mark&gt;/g, '</mark>');
 }
 
-/** Only web, mail and file links are opened; anything else (javascript:, data:) is dropped. */
+/** Only web, mail, file and DEVONthink links are opened; anything else (javascript:, data:) is dropped. */
 export function safeHref(url: string | null | undefined): string | null {
   if (!url) return null;
   try {
-    return ['http:', 'https:', 'mailto:', 'file:'].includes(new URL(url).protocol) ? url : null;
+    return ['http:', 'https:', 'mailto:', 'file:', 'x-devonthink-item:'].includes(new URL(url).protocol) ? url : null;
   } catch {
     return null;
   }
