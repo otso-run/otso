@@ -15,6 +15,7 @@ import { appleCalendar } from './calendar.js';
 import { gmail } from './gmail.js';
 import { safari, helium, imessage, appleNotes, applePhotos, applePodcasts, things, timing } from './local.js';
 
+import { obsidian, iaWriter } from './markdown.js';
 import { zotero } from './zotero.js';
 import { appleReminders } from './reminders.js';
 import { googleChrome, arc, dia } from './browsers.js';
@@ -48,6 +49,8 @@ export const CONNECTORS: Connector[] = [
   applePhotos,
   applePodcasts,
   things,
+  obsidian,
+  iaWriter,
   zotero,
   appleReminders,
   appleCalendar,
