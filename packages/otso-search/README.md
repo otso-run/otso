@@ -131,9 +131,15 @@ SQL
 
 A browser reload reads the running snapshot. Repeat the reindex, conversion, and launch steps when newer normalized data is ready.
 
+## Coverage
+
+[/coverage](http://127.0.0.1:5173/coverage) shows every source as one lane on a shared time axis, so you can see where each archive starts, where it has holes and when it last got anything new. Brighter cells hold more records. Red marks a gap of at least the chosen length (a week, a month, three months or a year) between two records, and a dashed amber line marks a source that has had nothing since its last record. Drag across the lanes or the axis to zoom, or pick a range. Select a source's name to list its longest gaps; selecting one zooms to it, and **Browse in search** opens search filtered to that source. Records without a timestamp can't be placed and are counted separately.
+
+The page reads `search_entry_map` once and keeps the result until the index changes on disk, so the first load after a rebuild takes a moment on a large archive.
+
 ## Running without real data
 
-To work on the UI without a personal archive, generate a synthetic index and point the app at it. Nothing in it comes from real sources.
+To work on the UI without a personal archive, generate a synthetic index and point the app at it. Nothing in it comes from real sources. A few sources have made-up gaps, and two stop early, so the coverage page has something to show.
 
 ```sh
 node scripts/seed-synthetic.cjs /tmp/otso-demo

@@ -43,5 +43,10 @@ const S={
 const ins=db.prepare(`INSERT INTO search_entries(rowid,title,content,source,entry_type,action_type,object_type,category,content_rowid,event_id,external_id,url,ts,visibility,year,month) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
 const map=db.prepare(`INSERT INTO search_entry_map VALUES(?,?,?,?,?,?,?,?)`);
 const t0=Date.UTC(2009,2,1)/1000,t1=Date.UTC(2026,10,27)/1000;let id=0;
-db.transaction(()=>{for(const [src,[n,et,g]] of Object.entries(S)){const start=t0+r()*0.5*(t1-t0);for(let i=0;i<n;i++){id++;const u=Math.pow(r(),0.6);const ts=Math.floor(start+u*(t1-start));const d=new Date(ts*1000);const m=`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`;const [title,content,url]=g();ins.run(id,title,content,src,et,et,'thing','x',id,'e'+id,'x'+id,url,ts,'private',d.getUTCFullYear(),m);map.run(id,'e'+id,src,et,ts,'private',d.getUTCFullYear(),m);}}})();
+// Made-up holes so the coverage view has gaps to show: [source, from, to] (to = null: never resumes)
+const day=(y,m,d=1)=>Date.UTC(y,m-1,d)/1000;
+const HOLES=[['lastfm',day(2015,3),day(2016,8)],['safari',day(2024,6),null],['imessage',day(2019,1),day(2019,4,15)],['github',day(2018,2),day(2018,5)],['timing',day(2021,9),day(2022,2)],['foursquare',day(2019,6),null],['spotify',day(2023,11,3),day(2023,12,20)]];
+const inHole=(src,ts)=>HOLES.some(([s,a,b])=>s===src&&ts>=a&&(b===null||ts<b));
+db.transaction(()=>{for(const [src,[n,et,g]] of Object.entries(S)){const start=t0+r()*0.5*(t1-t0);for(let i=0;i<n;i++){id++;const u=Math.pow(r(),0.6);let ts=Math.floor(start+u*(t1-start));if(inHole(src,ts))continue;if(r()<0.002)ts=0;const d=new Date(ts*1000);const m=ts?`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`:'';const [title,content,url]=g();ins.run(id,title,content,src,et,et,'thing','x',id,'e'+id,'x'+id,url,ts,'private',ts?d.getUTCFullYear():0,m);map.run(id,'e'+id,src,et,ts,'private',ts?d.getUTCFullYear():0,m);}}})();
+db.pragma("journal_mode = WAL");db.close();
 console.log(`${id} synthetic records written to ${p}`);
