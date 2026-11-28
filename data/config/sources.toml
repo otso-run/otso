@@ -824,3 +824,103 @@ SELECT
     NULL as url
 FROM calendar
 """
+
+# Google Chat: one row per message. The title names the sender and the
+# space or DM, so a search result says who said it where.
+[[sources]]
+name = "google-chat"
+enabled = true
+db_path = "google-takeout/chronicle/chronicle.db"
+category = "comms"
+
+[[sources.queries]]
+table = "google_chat"
+entry_type = "message"
+action_type = "SendAction"
+object_type = "Message"
+sql = """
+SELECT
+    source_id as external_id,
+    sender || ' · ' || conversation as title,
+    TRIM(COALESCE(text, '') || ' ' || COALESCE((SELECT group_concat(value, ' ') FROM json_each(attachments)), '')) as content,
+    startTime as occurred_at,
+    NULL as url,
+    json_object('sender', sender, 'conversation', conversation, 'attachments', json(attachments)) as metadata
+FROM google_chat
+"""
+
+# Google Voice: texts (one row per message) and calls; a voicemail's
+# transcript is its content.
+[[sources]]
+name = "google-voice"
+enabled = true
+db_path = "google-takeout/chronicle/chronicle.db"
+category = "comms"
+
+[[sources.queries]]
+table = "google_voice"
+entry_type = "message"
+action_type = "SendAction"
+object_type = "Message"
+sql = """
+SELECT
+    source_id as external_id,
+    name || CASE WHEN conversation <> name THEN ' · ' || conversation ELSE '' END as title,
+    COALESCE(text, '') as content,
+    startTime as occurred_at,
+    NULL as url,
+    json_object('number', number, 'conversation', conversation) as metadata
+FROM google_voice WHERE kind = 'text'
+"""
+
+[[sources.queries]]
+table = "google_voice"
+entry_type = "call"
+action_type = "CommunicateAction"
+object_type = "PhoneCall"
+sql = """
+SELECT
+    source_id as external_id,
+    upper(substr(kind, 1, 1)) || substr(kind, 2) || ' call: ' || name as title,
+    COALESCE(text, '') as content,
+    startTime as occurred_at,
+    NULL as url,
+    json_object('kind', kind, 'number', number, 'duration_seconds', duration) as metadata
+FROM google_voice WHERE kind <> 'text'
+"""
+
+# ============================================================================
+# GMAIL (Takeout Mail mbox; its own db because mailboxes are large)
+# ============================================================================
+
+# Spam is left out of the index. The link opens the message in Gmail by
+# its Message-ID, which works whatever the thread looks like now.
+[[sources]]
+name = "gmail"
+enabled = true
+db_path = "gmail/chronicle/chronicle.db"
+category = "comms"
+
+[[sources.queries]]
+table = "messages"
+entry_type = "email"
+action_type = "SendAction"
+object_type = "EmailMessage"
+sql = """
+SELECT
+    source_id as external_id,
+    CASE WHEN COALESCE(subject, '') = '' THEN '(no subject)' ELSE subject END as title,
+    TRIM(
+        'From: ' || COALESCE(sender, '') || char(10) ||
+        'To: ' || COALESCE(recipients, '') || char(10) ||
+        COALESCE(body, '') || char(10) ||
+        COALESCE((SELECT group_concat(value, ' ') FROM json_each(attachments)), '')
+    ) as content,
+    date as occurred_at,
+    CASE WHEN message_id IS NOT NULL
+        THEN 'https://mail.google.com/mail/u/0/#search/rfc822msgid%3A' || replace(replace(replace(message_id, '%', '%25'), '+', '%2B'), '@', '%40')
+    END as url,
+    json_object('from', sender, 'to', recipients, 'cc', cc, 'labels', labels, 'attachments', json(attachments)) as metadata
+FROM messages
+WHERE ',' || COALESCE(labels, '') || ',' NOT LIKE '%,Spam,%'
+"""

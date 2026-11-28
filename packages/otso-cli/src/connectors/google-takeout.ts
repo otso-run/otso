@@ -3,13 +3,18 @@ import type { Archive } from '../core/archive.js';
 import { iso } from '../core/time.js';
 import type { Connector, RunStats } from './types.js';
 import { addStats, shortHash } from './util.js';
+import { CHAT_TABLE, chatRows, conversationName } from './takeout/chat.js';
+import { VOICE_TABLE, voiceRows } from './takeout/voice.js';
 
 /**
- * Google Takeout feeds four sources.toml entries from one db:
+ * Google Takeout feeds several sources.toml entries from one db:
  *   google-search  My Activity/Search/MyActivity.json
  *   chrome         Chrome/History.json (BrowserHistory.json on newer exports)
  *   youtube        YouTube and YouTube Music/history/watch-history.json
  *   gcal           Calendar/*.ics
+ *   google-chat    Google Chat/Groups/<id>/messages.json (+ group_info.json)
+ *   google-voice   Voice/Calls/*.html
+ * Mail is its own source (gmail.ts) because of its size.
  * Takeout often arrives as several zips; ingest each one (any order).
  * Only the JSON formats are read, so choose JSON for My Activity.
  */
@@ -111,17 +116,17 @@ async function calendarRows(archive: Archive, file: string) {
 export const googleTakeout: Connector = {
   id: 'google-takeout',
   displayName: 'Google Takeout',
-  description: 'Search, Chrome, YouTube and Calendar',
+  description: 'Search, Chrome, YouTube, Calendar, Chat and Voice',
   kind: 'export',
   dbPath: 'google-takeout/chronicle/chronicle.db',
-  tables: [GOOGLE_SEARCH, CHROME_HISTORY, YOUTUBE_WATCH, CALENDAR],
-  configSources: ['google-search', 'chrome', 'youtube', 'gcal'],
+  tables: [GOOGLE_SEARCH, CHROME_HISTORY, YOUTUBE_WATCH, CALENDAR, CHAT_TABLE, VOICE_TABLE],
+  configSources: ['google-search', 'chrome', 'youtube', 'gcal', 'google-chat', 'google-voice'],
 
   exportGuide: {
     url: 'https://takeout.google.com/',
     steps: [
       'Click "Deselect all"',
-      'Tick Chrome, Calendar, My Activity and YouTube and YouTube Music',
+      'Tick Chrome, Calendar, Google Chat, My Activity, Voice and YouTube and YouTube Music',
       'Under My Activity, click "Multiple formats" and choose JSON',
       'Under YouTube, "Multiple formats" > history: JSON',
       'Next step: export once, .zip, 50 GB, then "Create export"',
@@ -160,12 +165,40 @@ export const googleTakeout: Connector = {
       found++;
     }
 
+    const fileSet = new Set(archive.files);
+    const chatFiles = archive.find(/Google Chat\/Groups\/[^/]+\/messages\.json$/i);
+    let chatCount = 0;
+    for (const file of chatFiles) {
+      const folder = file.split('/').slice(-2)[0];
+      const infoFile = file.replace(/messages\.json$/i, 'group_info.json');
+      const info = fileSet.has(infoFile) ? await archive.readJson(infoFile).catch(() => null) : null;
+      const rows = chatRows(await archive.readJson(file), conversationName(info, folder));
+      addStats(stats, 'google_chat', store.upsert(CHAT_TABLE, rows));
+      chatCount += rows.length;
+      found++;
+    }
+    if (chatFiles.length) log(`Google Chat: ${chatCount} messages in ${chatFiles.length} conversations`);
+
+    const voiceFiles = archive.find(/Voice\/Calls\/[^/]+\.html$/i);
+    let voiceCount = 0;
+    for (const file of voiceFiles) {
+      const rows = voiceRows(file.split('/').pop()!, await archive.readText(file));
+      addStats(stats, 'google_voice', store.upsert(VOICE_TABLE, rows));
+      voiceCount += rows.length;
+      found++;
+    }
+    if (voiceFiles.length) log(`Voice: ${voiceCount} texts and calls`);
+
+    if (archive.find(/(^|\/)Mail\/[^/]+\.mbox$/i).length) {
+      log('Mail is in this Takeout too. It is its own source: otso ingest gmail <the same path>');
+    }
+
     if (!found) {
       const html = archive.find(/My Activity\/.*\.html$/i).length;
       throw new Error(
         html
           ? 'This Takeout has My Activity as HTML. Re-export with JSON selected under "Multiple formats".'
-          : 'No Search, Chrome, YouTube or Calendar data found in this Takeout.'
+          : 'No Search, Chrome, YouTube, Calendar, Chat or Voice data found in this Takeout.'
       );
     }
     return stats;

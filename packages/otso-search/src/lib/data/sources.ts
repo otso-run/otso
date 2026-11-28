@@ -70,6 +70,8 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
   'messages': { label: 'Messages', cat: 'message', icon: '💬' },
   'slack': { label: 'Slack', cat: 'message', icon: '#' },
   'google-chat': { label: 'Google Chat', cat: 'message', icon: '💬' },
+  'google-voice': { label: 'Google Voice', cat: 'message', icon: '☎' },
+  'gmail': { label: 'Gmail', cat: 'message', icon: '✉' },
   'fastmail': { label: 'Fastmail', cat: 'message', icon: '✉' },
   'email': { label: 'Email', cat: 'message', icon: '✉' },
 
