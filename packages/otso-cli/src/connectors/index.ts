@@ -2,6 +2,7 @@ import type { Connector } from './types.js';
 import { arena } from './arena.js';
 import { readwise } from './readwise.js';
 import { pinboard } from './pinboard.js';
+import { raindrop } from './raindrop.js';
 import { lastfm } from './lastfm.js';
 import { github } from './github.js';
 import { spotify } from './spotify.js';
@@ -20,6 +21,7 @@ export const CONNECTORS: Connector[] = [
   arena,
   readwise,
   pinboard,
+  raindrop,
   lastfm,
   github,
   // Archive exports
