@@ -4,6 +4,7 @@ import { readwise } from './readwise.js';
 import { pinboard } from './pinboard.js';
 import { lastfm } from './lastfm.js';
 import { github } from './github.js';
+import { granola } from './granola.js';
 import { spotify } from './spotify.js';
 import { claude } from './claude.js';
 import { linkedin } from './linkedin.js';
@@ -20,6 +21,7 @@ export const CONNECTORS: Connector[] = [
   pinboard,
   lastfm,
   github,
+  granola,
   // Archive exports
   spotify,
   claude,

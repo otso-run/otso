@@ -360,6 +360,32 @@ SELECT
 FROM events
 """
 
+# Granola meetings: the summary, your own notes and the transcript are all searchable.
+[[sources]]
+name = "granola"
+enabled = true
+db_path = "granola/chronicle/chronicle.db"
+category = "notes"
+
+[[sources.queries]]
+table = "events"
+entry_type = "meeting"
+action_type = "CreateAction"
+object_type = "NoteDigitalDocument"
+sql = """
+SELECT
+    e.source_id as external_id,
+    e.name as title,
+    TRIM(COALESCE(e.description, '') || char(10) || COALESCE(e.text, '') || char(10) ||
+      COALESCE((SELECT group_concat(COALESCE(json_extract(a.value, '$.name'), json_extract(a.value, '$.email')), ', ')
+                FROM json_each(json_extract(e.object, '$.attendees')) a), '') || char(10) ||
+      COALESCE(t.text, '')) as content,
+    e.startTime as occurred_at,
+    json_extract(e.object, '$.url') as url
+FROM events e
+LEFT JOIN granola_transcripts t ON t.source_id = e.source_id
+"""
+
 [[sources]]
 name = "notion"
 enabled = true

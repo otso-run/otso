@@ -84,6 +84,7 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
   'obsidian': { label: 'Obsidian', cat: 'note', icon: '◈' },
   'remarkable': { label: 'reMarkable', cat: 'note', icon: '✎' },
   'devonthink': { label: 'DEVONthink', cat: 'note', icon: '🗄' },
+  'granola': { label: 'Granola', cat: 'note', icon: '🥣' },
 
   // Photo (Photos)
   'apple-photos': { label: 'Photos', cat: 'photo', icon: '📸' },
