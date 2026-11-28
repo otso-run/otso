@@ -35,6 +35,34 @@ SELECT
 FROM events WHERE type = 'BookmarkAction'
 """
 
+# Zotero library: saved items with their creators, abstract, tags, collections, notes and annotations.
+[[sources]]
+name = "zotero"
+enabled = true
+db_path = "zotero/chronicle/chronicle.db"
+category = "reading"
+
+[[sources.queries]]
+table = "events"
+entry_type = "save"
+action_type = "BookmarkAction"
+object_type = "CreativeWork"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    TRIM(
+      COALESCE((SELECT group_concat(c.value, ', ') FROM json_each(json_extract(object, '$.creators')) c), '') || char(10) ||
+      COALESCE(json_extract(object, '$.publication'), '') || ' ' || COALESCE(json_extract(object, '$.date'), '') || char(10) ||
+      COALESCE(description, '') || char(10) || COALESCE(text, '') || char(10) ||
+      COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.keywords')) k), '') || ' ' ||
+      COALESCE((SELECT group_concat(k.value, ' ') FROM json_each(json_extract(object, '$.collections')) k), '')
+    ) as content,
+    date_created as occurred_at,
+    json_extract(object, '$.url') as url
+FROM events
+"""
+
 [[sources]]
 name = "readwise"
 enabled = true
