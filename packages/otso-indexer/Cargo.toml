@@ -31,6 +31,8 @@ thiserror = "2"
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# sqlx takes a log::LevelFilter for its slow-statement warnings
+log = "0.4"
 
 # Meilisearch client (optional)
 meilisearch-sdk = { version = "0.27", optional = true }
