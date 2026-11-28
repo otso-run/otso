@@ -106,6 +106,7 @@ export const SOURCES: Record<string, { label: string; cat: string; icon: string 
 
   // Tasks (Productivity)
   'things': { label: 'Things', cat: 'tasks', icon: '☑' },
+  'todoist': { label: 'Todoist', cat: 'tasks', icon: '✔' },
 
   // Event (Calendar)
   'calendar': { label: 'Calendar', cat: 'event', icon: '📅' },
