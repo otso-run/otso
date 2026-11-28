@@ -41,7 +41,12 @@ export async function request(url: string, opts: RequestOptions = {}): Promise<R
       continue;
     }
     if ((res.status === 429 || res.status >= 500) && attempt < retries) {
-      const retryAfter = Number(res.headers.get('retry-after'));
+      let retryAfter = Number(res.headers.get('retry-after'));
+      // Some APIs (Readwise) only say it in the body: "Expected available in 4 seconds."
+      if (!(retryAfter > 0) && res.status === 429) {
+        const m = /available in (\d+) seconds?/i.exec(await res.text().catch(() => ''));
+        if (m) retryAfter = Number(m[1]) + 1;
+      }
       await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1000 * 2 ** attempt);
       continue;
     }

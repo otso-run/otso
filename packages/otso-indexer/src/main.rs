@@ -175,9 +175,10 @@ async fn run_build(
         match result {
             Ok((source_name, Ok(stats))) => {
                 tracing::info!(
-                    "  {} events: {} inserted, {} skipped",
+                    "  {} events: {} inserted, {} updated, {} unchanged",
                     source_name,
                     stats.inserted,
+                    stats.updated,
                     stats.skipped
                 );
                 success_count += 1;

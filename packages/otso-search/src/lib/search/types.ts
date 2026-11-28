@@ -17,6 +17,8 @@ export interface DocumentResponse {
   ts: number;
   external_id?: string;
   url?: string;
+  /** Source-specific details, e.g. a Reader article's author and tags. */
+  metadata?: Record<string, unknown>;
   [key: string]: unknown;
 }
 

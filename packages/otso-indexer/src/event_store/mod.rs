@@ -102,6 +102,12 @@ pub struct Transaction {
     pub source: String,
     pub started_at: i64,
     pub event_count: AtomicI64,
+    pub updated_count: AtomicI64,
+    pub skipped_count: AtomicI64,
+    /// source_ids already appended in this batch: the first row wins, as it
+    /// always has, so a query that repeats an id can't flip-flop between
+    /// two payloads on every build.
+    seen: std::sync::Mutex<std::collections::HashSet<String>>,
 }
 
 /// SQLite-backed event store with batch transaction support
@@ -161,15 +167,83 @@ impl SqliteEventStore {
             source: source.to_string(),
             started_at,
             event_count: AtomicI64::new(0),
+            updated_count: AtomicI64::new(0),
+            skipped_count: AtomicI64::new(0),
+            seen: Default::default(),
         })
     }
 
-    /// Append an event to the current transaction
+    /// Append an event to the current transaction.
+    ///
+    /// New (source, source_id) pairs are inserted. A pair that's already
+    /// stored is left alone when nothing changed, and otherwise rewritten in
+    /// place with a fresh event_id, so the search projection (which tracks
+    /// event_ids) drops the old entry and indexes the new one. That's how an
+    /// edited row in a source database, or a sources.toml query that now
+    /// selects more, reaches search without `otso index --fresh`.
     pub async fn append(&self, tx: &Transaction, mut event: Event) -> Result<()> {
+        if !tx.seen.lock().unwrap().insert(event.source_id.clone()) {
+            tx.skipped_count.fetch_add(1, Ordering::SeqCst);
+            return Ok(());
+        }
         event.batch_id = Some(tx.batch_id);
         event.ingested_at = chrono::Utc::now().timestamp();
+        let payload = event.payload.to_string();
 
-        // Use INSERT OR IGNORE for deduplication
+        type Stored = (String, Option<i64>, i64, Option<String>, Option<String>, String);
+        let existing: Option<Stored> = sqlx::query_as(
+            r#"
+            SELECT payload, deleted_at, occurred_at, action_type, object_type, visibility
+            FROM events WHERE source = ?1 AND source_id = ?2 AND event_type = ?3
+            "#,
+        )
+        .bind(&event.source)
+        .bind(&event.source_id)
+        .bind(event.event_type.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some((old_payload, deleted_at, occurred_at, action_type, object_type, visibility)) = existing {
+            let unchanged = deleted_at.is_none()
+                && old_payload == payload
+                && occurred_at == event.occurred_at
+                && action_type == event.action_type
+                && object_type == event.object_type
+                && visibility == event.visibility.as_str();
+            if unchanged {
+                tx.skipped_count.fetch_add(1, Ordering::SeqCst);
+                return Ok(());
+            }
+            // A row soft-deleted by a rolled-back batch comes back as part of
+            // this batch; a live row keeps its original batch, so rolling this
+            // batch back can't delete something that existed before it.
+            sqlx::query(
+                r#"
+                UPDATE events SET
+                    event_id = ?1, action_type = ?2, object_type = ?3, payload = ?4,
+                    visibility = ?5, occurred_at = ?6, ingested_at = ?7,
+                    batch_id = CASE WHEN deleted_at IS NULL THEN batch_id ELSE ?8 END,
+                    deleted_at = NULL
+                WHERE source = ?9 AND source_id = ?10 AND event_type = ?11
+                "#,
+            )
+            .bind(event.event_id.to_string())
+            .bind(&event.action_type)
+            .bind(&event.object_type)
+            .bind(&payload)
+            .bind(event.visibility.as_str())
+            .bind(event.occurred_at)
+            .bind(event.ingested_at)
+            .bind(tx.batch_id.to_string())
+            .bind(&event.source)
+            .bind(&event.source_id)
+            .bind(event.event_type.as_str())
+            .execute(&self.pool)
+            .await?;
+            tx.updated_count.fetch_add(1, Ordering::SeqCst);
+            return Ok(());
+        }
+
         let result = sqlx::query(
             r#"
             INSERT OR IGNORE INTO events (
@@ -185,7 +259,7 @@ impl SqliteEventStore {
         .bind(&event.source_id)
         .bind(&event.action_type)
         .bind(&event.object_type)
-        .bind(event.payload.to_string())
+        .bind(&payload)
         .bind(event.visibility.as_str())
         .bind(event.occurred_at)
         .bind(event.ingested_at)
@@ -237,8 +311,8 @@ impl SqliteEventStore {
         Ok(BatchStats {
             batch_id: tx.batch_id,
             inserted: event_count,
-            updated: 0,
-            skipped: 0, // We don't track skipped separately yet
+            updated: tx.updated_count.load(Ordering::SeqCst),
+            skipped: tx.skipped_count.load(Ordering::SeqCst),
             duration_ms: (completed_at - tx.started_at) * 1000,
         })
     }
@@ -499,6 +573,62 @@ mod tests {
         // Total should still be 1
         let count = store.count_total().await.expect("Failed to count");
         assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_changed_payload_updates_in_place_with_new_event_id() {
+        let (store, _temp_dir) = create_test_store().await;
+
+        let tx = store.begin_batch("test-source").await.unwrap();
+        store.append(&tx, create_test_event("test-source", "doc-1")).await.unwrap();
+        store.commit(tx).await.unwrap();
+        let first_id = store.stream_projectable().await.unwrap()[0].event_id;
+
+        // Same row again: unchanged, skipped.
+        let tx = store.begin_batch("test-source").await.unwrap();
+        store.append(&tx, create_test_event("test-source", "doc-1")).await.unwrap();
+        let stats = store.commit(tx).await.unwrap();
+        assert_eq!((stats.inserted, stats.updated, stats.skipped), (0, 0, 1));
+
+        // The source row now carries more: updated, with a new event_id.
+        let tx = store.begin_batch("test-source").await.unwrap();
+        let mut changed = create_test_event("test-source", "doc-1");
+        changed.payload = serde_json::json!({"test": "value", "content": "full text"});
+        store.append(&tx, changed).await.unwrap();
+        let stats = store.commit(tx).await.unwrap();
+        assert_eq!((stats.inserted, stats.updated, stats.skipped), (0, 1, 0));
+
+        let events = store.stream_projectable().await.unwrap();
+        assert_eq!(events.len(), 1);
+        assert_ne!(events[0].event_id, first_id);
+        assert_eq!(events[0].payload["content"], "full text");
+    }
+
+    #[tokio::test]
+    async fn test_repeated_id_in_one_batch_keeps_the_first_row() {
+        let (store, _temp_dir) = create_test_store().await;
+        let tx = store.begin_batch("test-source").await.unwrap();
+        store.append(&tx, create_test_event("test-source", "dup")).await.unwrap();
+        let mut second = create_test_event("test-source", "dup");
+        second.payload = serde_json::json!({"test": "other"});
+        store.append(&tx, second).await.unwrap();
+        let stats = store.commit(tx).await.unwrap();
+        assert_eq!((stats.inserted, stats.updated, stats.skipped), (1, 0, 1));
+        assert_eq!(store.stream_projectable().await.unwrap()[0].payload["test"], "value");
+    }
+
+    #[tokio::test]
+    async fn test_rolled_back_row_comes_back_on_next_build() {
+        let (store, _temp_dir) = create_test_store().await;
+        let tx = store.begin_batch("test-source").await.unwrap();
+        store.append(&tx, create_test_event("test-source", "doc-1")).await.unwrap();
+        store.rollback(tx).await.unwrap();
+        assert_eq!(store.stream_projectable().await.unwrap().len(), 0);
+
+        let tx = store.begin_batch("test-source").await.unwrap();
+        store.append(&tx, create_test_event("test-source", "doc-1")).await.unwrap();
+        store.commit(tx).await.unwrap();
+        assert_eq!(store.stream_projectable().await.unwrap().len(), 1);
     }
 
     #[tokio::test]
