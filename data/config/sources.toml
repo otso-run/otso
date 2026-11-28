@@ -276,6 +276,43 @@ SELECT
 FROM events WHERE actionStatus = 'completed' AND endTime IS NOT NULL
 """
 
+# Apple Reminders, shaped like Things: one entry when made, one when completed.
+[[sources]]
+name = "apple-reminders"
+enabled = true
+db_path = "apple-reminders/chronicle/chronicle.db"
+category = "productivity"
+
+[[sources.queries]]
+table = "events"
+entry_type = "reminder"
+action_type = "CreateAction"
+object_type = "Action"
+sql = """
+SELECT
+    source_id as external_id,
+    name as title,
+    TRIM(COALESCE(description, '') || ' ' || COALESCE(json_extract(result, '$.name'), '')) as content,
+    startTime as occurred_at,
+    NULL as url
+FROM events WHERE startTime IS NOT NULL
+"""
+
+[[sources.queries]]
+table = "events"
+entry_type = "reminder-completed"
+action_type = "CompleteAction"
+object_type = "Action"
+sql = """
+SELECT
+    source_id || '-completed' as external_id,
+    '✓ ' || name as title,
+    TRIM(COALESCE(description, '') || ' ' || COALESCE(json_extract(result, '$.name'), '')) as content,
+    endTime as occurred_at,
+    NULL as url
+FROM events WHERE actionStatus = 'completed' AND endTime IS NOT NULL
+"""
+
 [[sources]]
 name = "timing"
 enabled = true
