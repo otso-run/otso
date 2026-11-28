@@ -31,6 +31,8 @@ All notable changes to Otso are recorded here. The format is based on
 
 ### Fixed
 
+- Two Macs, or a manual run alongside the scheduled one, can no longer write the same source at once. Each write takes a `<db>.lock` next to the database on the share, and a second writer skips that source with a note saying which Mac has it, so the next run picks it up. Before, the second copy overwrote the first, and two copies landing together could leave an empty database. Copies to the share also go to a file of their own and are size-checked before they replace the real one. Locks from a run that died are cleared after 6 hours, or immediately when it was this Mac's.
+- A scheduled `otso sync` no longer crashes before syncing anything when another Mac replaces a source database on the share while it's being read (`SQLITE_IOERR_VNODE`). That source's row count is left out of the status instead.
 - Events from an indexer run that was interrupted part way come back on the next `otso index`. Before, they were dropped from the event store for good. [#38](https://github.com/otso-run/otso/pull/38)
 - Reader syncs wait out Readwise's rate limit instead of failing part way through a large pull. [#38](https://github.com/otso-run/otso/pull/38)
 - A large source no longer fails a fresh `otso index` with "database is locked" when several sources write at once. [#39](https://github.com/otso-run/otso/pull/39)
