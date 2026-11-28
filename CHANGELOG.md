@@ -48,6 +48,7 @@ All notable changes to Otso are recorded here. The format is based on
 - Reader syncs wait out Readwise's rate limit instead of failing part way through a large pull. [#38](https://github.com/otso-run/otso/pull/38)
 - A large source no longer fails a fresh `otso index` with "database is locked" when several sources write at once. [#39](https://github.com/otso-run/otso/pull/39)
 - The two mock Twitter accounts used for demo data no longer show up in a real `otso index`; only `otso index --fixtures` builds them. [#39](https://github.com/otso-run/otso/pull/39)
+- `otso index` no longer reports a source as failed when its database doesn't have the tables yet, such as a Google Takeout product that wasn't in your export, or when its file is momentarily empty during a sync. Those sources are skipped as not imported yet, and what's already in search for them stays. [#62](https://github.com/otso-run/otso/pull/62)
 
 ### Security
 
