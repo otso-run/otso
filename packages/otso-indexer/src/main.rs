@@ -209,9 +209,10 @@ async fn run_build(data_dir: &str, config: &config::Config, opts: BuildOptions<'
                 match &source.error {
                     None if source.extract.missing => {}
                     None => tracing::info!(
-                        "  {} events: {} inserted, {} skipped ({:.1}s)",
+                        "  {} events: {} inserted, {} updated, {} unchanged ({:.1}s)",
                         source.name,
                         source.inserted,
+                        source.updated,
                         source.skipped,
                         source.total_ms as f64 / 1000.0
                     ),
@@ -287,7 +288,8 @@ async fn process_source(
             Ok(_) => {
                 let stats = event_store.commit(tx).await?;
                 out.inserted = stats.inserted;
-                out.skipped = out.events - stats.inserted;
+                out.updated = stats.updated;
+                out.skipped = stats.skipped;
             }
             Err(e) => {
                 // Soft-delete what this batch wrote before the error.

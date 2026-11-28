@@ -5,13 +5,13 @@ import type { SearchBackend, SearchResponse, StatsResponse, TimelineResponse, Da
 // Path to Otso's FTS5 search database
 // In dev: cwd is packages/otso-search, so ../../data/otso/search.db
 // In production: adjust as needed
-const DB_PATH = process.env.OTSO_DATA_DIR
+export const DB_PATH = process.env.OTSO_DATA_DIR
   ? path.join(process.env.OTSO_DATA_DIR, 'otso', 'search.db')
   : path.join(process.cwd(), '../../data/otso/search.db');
 
 let db: Database.Database | null = null;
 
-function getDb(): Database.Database {
+export function getDb(): Database.Database {
   if (!db) {
     db = new Database(DB_PATH, { readonly: true });
     if (process.env.OTSO_SQLITE_JOURNAL !== 'delete') db.pragma('journal_mode = WAL');
@@ -19,6 +19,21 @@ function getDb(): Database.Database {
     db.pragma('cache_size = -32000');
   }
   return db;
+}
+
+/**
+ * Source-specific details (author, tags, reading progress, …) the indexer
+ * keeps beside each entry. Indexes built before the column existed have none.
+ */
+function getMetadata(database: Database.Database, id: number): Record<string, unknown> | null {
+  try {
+    const row = database.prepare('SELECT metadata FROM search_entry_map WHERE rowid = ?').get(id) as
+      | { metadata: string | null }
+      | undefined;
+    return row?.metadata ? JSON.parse(row.metadata) : null;
+  } catch {
+    return null;
+  }
 }
 
 export class FTS5Backend implements SearchBackend {
@@ -233,11 +248,14 @@ export class FTS5Backend implements SearchBackend {
         FROM search_entries
         WHERE content_rowid = ?
       `).get(id) as DocumentResponse | undefined;
-      return doc || null;
+      if (!doc) return null;
+      const metadata = getMetadata(database, id);
+      return metadata ? { ...doc, metadata } : doc;
     } catch {
       return null;
     }
   }
+
 
   async isAvailable(): Promise<boolean> {
     try {

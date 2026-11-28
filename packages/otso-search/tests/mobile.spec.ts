@@ -68,3 +68,35 @@ test.describe('Phone layout', () => {
     await expect(page.locator('.chart')).toBeVisible();
   });
 });
+
+test.describe('Coverage on a phone', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/coverage');
+    await expect(page.locator('.lanes canvas').first()).toBeVisible();
+  });
+
+  test('fits the screen and keeps lanes full width', async ({ page }) => {
+    const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth
+    }));
+    expect(scrollWidth).toBe(clientWidth);
+    const track = (await page.locator('.lane-track').first().boundingBox())!;
+    expect(track.width).toBeGreaterThan(page.viewportSize()!.width - 40);
+    const axis = (await page.locator('.axis-track').boundingBox())!;
+    expect(Math.round(axis.x)).toBe(Math.round(track.x));
+    expect(Math.round(axis.width)).toBe(Math.round(track.width));
+  });
+
+  test('a tap on a lane shows its count, not the lane details', async ({ page }) => {
+    const track = (await page.locator('.lane-track').nth(2).boundingBox())!;
+    await page.touchscreen.tap(track.x + track.width - 6, track.y + track.height / 2);
+    await expect(page.getByRole('tooltip')).toBeVisible();
+    await expect(page.locator('.details')).toHaveCount(0);
+  });
+
+  test('a tap on a lane name opens its gaps', async ({ page }) => {
+    await page.locator('.lanes .lane-label').first().tap();
+    await expect(page.locator('.details')).toHaveCount(1);
+  });
+});

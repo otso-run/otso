@@ -20,6 +20,9 @@ pub struct SearchEntry {
     pub category: String,
     pub year: i32,
     pub month: String,
+    /// JSON object of source-specific details (author, tags, …) from a
+    /// query's `metadata` column, shown in the result detail. Not searched.
+    pub metadata: Option<String>,
 }
 
 impl SearchEntry {
@@ -42,6 +45,7 @@ impl SearchEntry {
             category: derive_category(&event.source, &event.action_type),
             year: timestamp_to_year(event.occurred_at),
             month: timestamp_to_month(event.occurred_at),
+            metadata: extract_metadata(payload),
         }
     }
 }
@@ -56,6 +60,23 @@ fn timestamp_to_month(ts: i64) -> String {
     chrono::DateTime::from_timestamp(ts, 0)
         .map(|dt| dt.format("%Y-%m").to_string())
         .unwrap_or_else(|| "1970-01".to_string())
+}
+
+/// The query's `metadata` column, when it's a JSON object, minus empty values.
+fn extract_metadata(payload: &serde_json::Value) -> Option<String> {
+    let obj = payload.get("metadata")?.as_object()?;
+    let kept: serde_json::Map<String, serde_json::Value> = obj
+        .iter()
+        .filter(|(_, v)| match v {
+            serde_json::Value::Null => false,
+            serde_json::Value::String(s) => !s.is_empty(),
+            serde_json::Value::Array(a) => !a.is_empty(),
+            serde_json::Value::Object(o) => !o.is_empty(),
+            _ => true,
+        })
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    (!kept.is_empty()).then(|| serde_json::Value::Object(kept).to_string())
 }
 
 /// Extract title from event payload

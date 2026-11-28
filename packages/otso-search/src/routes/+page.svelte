@@ -249,7 +249,14 @@
     (async () => {
       const res = await fetch('/api/stats');
       stats = await res.json();
-      await loadRecent();
+      // /?source=<name> opens search filtered to one source (the coverage view links here)
+      const source = new URLSearchParams(window.location.search).get('source');
+      if (source) {
+        selectedSources = new Set([source]);
+        await browseSource();
+      } else {
+        await loadRecent();
+      }
     })();
 
     // Keyboard shortcuts
@@ -644,6 +651,8 @@
         </span>
         {#if hasActiveFilters}
           <button class="clear-filters" onclick={clearAllFilters}>Clear filters</button>
+        {:else}
+          <a class="coverage-link" href="/coverage">Coverage</a>
         {/if}
       </div>
     </div>
@@ -675,6 +684,7 @@
         <span><kbd>↑↓</kbd> nav</span>
         <span><kbd>^T</kbd> timeline</span>
         <span><kbd>esc</kbd> clear</span>
+        <a class="footer-link" href="/coverage">coverage</a>
       </div>
     {/if}
   </main>
@@ -854,6 +864,16 @@
     color: #525252;
     display: flex;
     gap: 16px;
+  }
+
+  .footer-link {
+    margin-left: auto;
+    color: #737373;
+    text-decoration: none;
+  }
+
+  .footer-link:hover {
+    color: #e5e5e5;
   }
 
   .footer kbd {
@@ -1077,6 +1097,16 @@
       font-size: 11px;
       color: #737373;
       white-space: nowrap;
+    }
+
+    .coverage-link {
+      display: inline-flex;
+      align-items: center;
+      height: 32px;
+      padding-left: 12px;
+      color: #a3a3a3;
+      font-size: 12px;
+      text-decoration: none;
     }
 
     .clear-filters {

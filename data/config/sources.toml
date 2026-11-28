@@ -56,7 +56,9 @@ SELECT
 FROM events WHERE type = 'HighlightAction'
 """
 
-# Reader documents (saved articles, PDFs); RSS feed items are not synced
+# Reader documents (saved articles, PDFs); RSS feed items are not synced.
+# content is the author, summary and full article text (reader_content), so
+# search finds words from the body; metadata is shown in the result detail.
 [[sources.queries]]
 table = "events"
 entry_type = "article"
@@ -64,12 +66,36 @@ action_type = "ReadAction"
 object_type = "Article"
 sql = """
 SELECT
-    source_id as external_id,
-    COALESCE(json_extract(object, '$.name'), json_extract(object, '$.url')) as title,
-    COALESCE(json_extract(object, '$.summary'), '') as content,
-    startTime as occurred_at,
-    json_extract(object, '$.url') as url
-FROM events WHERE type = 'ReadAction'
+    e.source_id as external_id,
+    COALESCE(json_extract(e.object, '$.name'), json_extract(e.object, '$.url')) as title,
+    TRIM(
+        COALESCE(json_extract(e.object, '$.author') || char(10), '') ||
+        COALESCE(json_extract(e.object, '$.summary') || char(10), '') ||
+        COALESCE(c.text, ''),
+        char(10) || ' '
+    ) as content,
+    e.startTime as occurred_at,
+    json_extract(e.object, '$.url') as url,
+    json_object(
+        'author', json_extract(e.object, '$.author'),
+        'site_name', json_extract(e.object, '$.site_name'),
+        'category', json_extract(e.object, '$.category'),
+        'published_date', json_extract(e.object, '$.published_date'),
+        'word_count', json_extract(e.object, '$.word_count'),
+        'reading_time', json_extract(e.object, '$.reading_time'),
+        'summary', json_extract(e.object, '$.summary'),
+        'image_url', json_extract(e.object, '$.image_url'),
+        'reader_url', json_extract(e.object, '$.readerUrl'),
+        'location', json_extract(e.result, '$.location'),
+        'reading_progress', json_extract(e.result, '$.readingProgress'),
+        'tags', json(json_extract(e.result, '$.tags')),
+        'notes', json_extract(e.result, '$.notes'),
+        'saved_at', COALESCE(json_extract(e.result, '$.savedAt'), e.startTime),
+        'last_opened_at', COALESCE(json_extract(e.result, '$.lastOpenedAt'), e.endTime)
+    ) as metadata
+FROM events e
+LEFT JOIN reader_content c ON c.source_id = e.source_id
+WHERE e.type = 'ReadAction'
 """
 
 # ============================================================================

@@ -19,8 +19,10 @@ pub struct SourceReport {
     pub name: String,
     /// Events read (after aggregation).
     pub events: i64,
-    /// New this run; the rest were already in events.db.
+    /// New this run, stored but changed (rewritten in place), and stored
+    /// and unchanged (or repeated within the batch).
     pub inserted: i64,
+    pub updated: i64,
     pub skipped: i64,
     pub total_ms: u64,
     pub write_ms: u64,
@@ -60,6 +62,7 @@ impl SourceReport {
             name: name.to_string(),
             events: 0,
             inserted: 0,
+            updated: 0,
             skipped: 0,
             total_ms: 0,
             write_ms: 0,

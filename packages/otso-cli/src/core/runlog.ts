@@ -15,8 +15,9 @@ export interface SourceRun {
   ms: number;
   ok: boolean;
   error?: string;
-  /** sync: rows new / already stored. index: events new / skipped. */
+  /** sync: rows new / already stored. index: events new / changed / unchanged. */
   inserted?: number;
+  updated?: number;
   skipped?: number;
   /** index: rows the source's queries returned, and the time spent on each part. */
   rows?: number;
@@ -83,6 +84,7 @@ export interface IndexerReport {
     name: string;
     events: number;
     inserted: number;
+    updated?: number;
     skipped: number;
     total_ms: number;
     write_ms: number;
@@ -108,6 +110,7 @@ export function indexRunFromReport(report: IndexerReport, device?: string): RunE
         ok: !s.error,
         ...(s.error ? { error: s.error } : {}),
         inserted: s.inserted,
+        ...(s.updated ? { updated: s.updated } : {}),
         skipped: s.skipped,
         rows: s.rows,
         read_ms: s.read_ms,

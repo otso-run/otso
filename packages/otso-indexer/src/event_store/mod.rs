@@ -102,6 +102,12 @@ pub struct Transaction {
     pub source: String,
     pub started_at: i64,
     pub event_count: AtomicI64,
+    pub updated_count: AtomicI64,
+    pub skipped_count: AtomicI64,
+    /// source_ids already appended in this batch: the first row wins, as it
+    /// always has, so a query that repeats an id can't flip-flop between
+    /// two payloads on every build.
+    seen: std::sync::Mutex<std::collections::HashSet<String>>,
 }
 
 /// SQLite-backed event store with batch transaction support
@@ -173,16 +179,84 @@ impl SqliteEventStore {
             source: source.to_string(),
             started_at,
             event_count: AtomicI64::new(0),
+            updated_count: AtomicI64::new(0),
+            skipped_count: AtomicI64::new(0),
+            seen: Default::default(),
         })
     }
 
-    /// Append an event to the current transaction
+    /// Append an event to the current transaction.
+    ///
+    /// New (source, source_id) pairs are inserted. A pair that's already
+    /// stored is left alone when nothing changed, and otherwise rewritten in
+    /// place with a fresh event_id, so the search projection (which tracks
+    /// event_ids) drops the old entry and indexes the new one. That's how an
+    /// edited row in a source database, or a sources.toml query that now
+    /// selects more, reaches search without `otso index --fresh`.
     pub async fn append(&self, tx: &Transaction, mut event: Event) -> Result<()> {
         let _guard = self.write_lock.lock().await;
+        if !tx.seen.lock().unwrap().insert(event.source_id.clone()) {
+            tx.skipped_count.fetch_add(1, Ordering::SeqCst);
+            return Ok(());
+        }
         event.batch_id = Some(tx.batch_id);
         event.ingested_at = chrono::Utc::now().timestamp();
+        let payload = event.payload.to_string();
 
-        // Use INSERT OR IGNORE for deduplication
+        type Stored = (String, Option<i64>, i64, Option<String>, Option<String>, String);
+        let existing: Option<Stored> = sqlx::query_as(
+            r#"
+            SELECT payload, deleted_at, occurred_at, action_type, object_type, visibility
+            FROM events WHERE source = ?1 AND source_id = ?2 AND event_type = ?3
+            "#,
+        )
+        .bind(&event.source)
+        .bind(&event.source_id)
+        .bind(event.event_type.as_str())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        if let Some((old_payload, deleted_at, occurred_at, action_type, object_type, visibility)) = existing {
+            let unchanged = deleted_at.is_none()
+                && old_payload == payload
+                && occurred_at == event.occurred_at
+                && action_type == event.action_type
+                && object_type == event.object_type
+                && visibility == event.visibility.as_str();
+            if unchanged {
+                tx.skipped_count.fetch_add(1, Ordering::SeqCst);
+                return Ok(());
+            }
+            // A row soft-deleted by a rolled-back batch comes back as part of
+            // this batch; a live row keeps its original batch, so rolling this
+            // batch back can't delete something that existed before it.
+            sqlx::query(
+                r#"
+                UPDATE events SET
+                    event_id = ?1, action_type = ?2, object_type = ?3, payload = ?4,
+                    visibility = ?5, occurred_at = ?6, ingested_at = ?7,
+                    batch_id = CASE WHEN deleted_at IS NULL THEN batch_id ELSE ?8 END,
+                    deleted_at = NULL
+                WHERE source = ?9 AND source_id = ?10 AND event_type = ?11
+                "#,
+            )
+            .bind(event.event_id.to_string())
+            .bind(&event.action_type)
+            .bind(&event.object_type)
+            .bind(&payload)
+            .bind(event.visibility.as_str())
+            .bind(event.occurred_at)
+            .bind(event.ingested_at)
+            .bind(tx.batch_id.to_string())
+            .bind(&event.source)
+            .bind(&event.source_id)
+            .bind(event.event_type.as_str())
+            .execute(&self.pool)
+            .await?;
+            tx.updated_count.fetch_add(1, Ordering::SeqCst);
+            return Ok(());
+        }
+
         let result = sqlx::query(
             r#"
             INSERT OR IGNORE INTO events (
@@ -198,7 +272,7 @@ impl SqliteEventStore {
         .bind(&event.source_id)
         .bind(&event.action_type)
         .bind(&event.object_type)
-        .bind(event.payload.to_string())
+        .bind(&payload)
         .bind(event.visibility.as_str())
         .bind(event.occurred_at)
         .bind(event.ingested_at)
@@ -213,30 +287,117 @@ impl SqliteEventStore {
         Ok(())
     }
 
-    /// Append many events to the batch: multi-row INSERT OR IGNORE statements
-    /// inside a few large transactions instead of one autocommit per row.
-    /// Returns how many were new (the rest were already stored).
+    /// Append many events to the batch, with the same rules as `append`
+    /// (first row wins within a batch; stored and unchanged is skipped;
+    /// stored and changed is rewritten in place with a new event_id), but
+    /// in a few large transactions: stored rows are looked up 500 ids at a
+    /// time and new ones go in as multi-row INSERTs, instead of a lookup
+    /// and an autocommit per row. Returns how many were new.
     pub async fn append_many(&self, tx: &Transaction, events: &[Event]) -> Result<i64> {
         let ingested_at = chrono::Utc::now().timestamp();
         let batch_id = tx.batch_id.to_string();
         let mut inserted = 0i64;
 
-        for chunk in events.chunks(ROWS_PER_TRANSACTION) {
+        let fresh: Vec<&Event> = {
+            let mut seen = tx.seen.lock().unwrap();
+            events
+                .iter()
+                .filter(|e| {
+                    let first = seen.insert(e.source_id.clone());
+                    if !first {
+                        tx.skipped_count.fetch_add(1, Ordering::SeqCst);
+                    }
+                    first
+                })
+                .collect()
+        };
+
+        type Stored = (String, String, String, Option<i64>, i64, Option<String>, Option<String>, String);
+
+        for chunk in fresh.chunks(ROWS_PER_TRANSACTION) {
             let _guard = self.write_lock.lock().await;
             let mut db_tx = self.pool.begin().await?;
-            for rows in chunk.chunks(ROWS_PER_INSERT) {
+
+            // What's already stored for this chunk, by (event_type, source_id).
+            let mut stored: std::collections::HashMap<(String, String), Stored> = Default::default();
+            for ids in chunk.chunks(ROWS_PER_INSERT) {
+                let mut qb = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
+                    "SELECT event_type, source_id, payload, deleted_at, occurred_at, action_type, \
+                     object_type, visibility FROM events WHERE source = ",
+                );
+                qb.push_bind(&ids[0].source);
+                qb.push(" AND source_id IN (");
+                let mut list = qb.separated(", ");
+                for e in ids {
+                    list.push_bind(&e.source_id);
+                }
+                list.push_unseparated(")");
+                let rows: Vec<Stored> = qb.build_query_as().fetch_all(&mut *db_tx).await?;
+                for row in rows {
+                    stored.insert((row.0.clone(), row.1.clone()), row);
+                }
+            }
+
+            let mut new_rows: Vec<(&Event, String)> = Vec::new();
+            for e in chunk.iter().copied() {
+                let payload = e.payload.to_string();
+                let Some((_, _, old_payload, deleted_at, occurred_at, action_type, object_type, visibility)) =
+                    stored.get(&(e.event_type.as_str().to_string(), e.source_id.clone()))
+                else {
+                    new_rows.push((e, payload));
+                    continue;
+                };
+                let unchanged = deleted_at.is_none()
+                    && *old_payload == payload
+                    && *occurred_at == e.occurred_at
+                    && *action_type == e.action_type
+                    && *object_type == e.object_type
+                    && visibility == e.visibility.as_str();
+                if unchanged {
+                    tx.skipped_count.fetch_add(1, Ordering::SeqCst);
+                    continue;
+                }
+                // As in `append`: a live row keeps its original batch, a
+                // soft-deleted one comes back as part of this batch.
+                sqlx::query(
+                    r#"
+                    UPDATE events SET
+                        event_id = ?1, action_type = ?2, object_type = ?3, payload = ?4,
+                        visibility = ?5, occurred_at = ?6, ingested_at = ?7,
+                        batch_id = CASE WHEN deleted_at IS NULL THEN batch_id ELSE ?8 END,
+                        deleted_at = NULL
+                    WHERE source = ?9 AND source_id = ?10 AND event_type = ?11
+                    "#,
+                )
+                .bind(e.event_id.to_string())
+                .bind(&e.action_type)
+                .bind(&e.object_type)
+                .bind(&payload)
+                .bind(e.visibility.as_str())
+                .bind(e.occurred_at)
+                .bind(ingested_at)
+                .bind(&batch_id)
+                .bind(&e.source)
+                .bind(&e.source_id)
+                .bind(e.event_type.as_str())
+                .execute(&mut *db_tx)
+                .await?;
+                tx.updated_count.fetch_add(1, Ordering::SeqCst);
+            }
+
+            for rows in new_rows.chunks(ROWS_PER_INSERT) {
                 let mut qb = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
                     "INSERT OR IGNORE INTO events (event_id, event_type, source, source_id, \
                      action_type, object_type, payload, visibility, occurred_at, ingested_at, batch_id) ",
                 );
-                qb.push_values(rows, |mut b, e| {
+                qb.push_values(rows, |mut b, (e, payload)| {
                     b.push_bind(e.event_id.to_string())
                         .push_bind(e.event_type.as_str())
                         .push_bind(&e.source)
                         .push_bind(&e.source_id)
                         .push_bind(&e.action_type)
                         .push_bind(&e.object_type)
-                        .push_bind(e.payload.to_string())
+                        .push_bind(payload)
                         .push_bind(e.visibility.as_str())
                         .push_bind(e.occurred_at)
                         .push_bind(ingested_at)
@@ -289,8 +450,8 @@ impl SqliteEventStore {
         Ok(BatchStats {
             batch_id: tx.batch_id,
             inserted: event_count,
-            updated: 0,
-            skipped: 0, // We don't track skipped separately yet
+            updated: tx.updated_count.load(Ordering::SeqCst),
+            skipped: tx.skipped_count.load(Ordering::SeqCst),
             duration_ms: (completed_at - tx.started_at) * 1000,
         })
     }
@@ -400,40 +561,46 @@ impl SqliteEventStore {
         Ok(count)
     }
 
-    /// Highest rowid in events. Inserts only ever take a higher one, so a
-    /// projection can remember it and next time read just the newer events.
-    pub async fn max_rowid(&self) -> Result<i64> {
-        Ok(sqlx::query_scalar("SELECT COALESCE(MAX(rowid), 0) FROM events")
-            .fetch_one(&self.pool)
-            .await?)
-    }
-
     /// Stream all projectable events (for rebuilding projections)
     pub async fn stream_projectable(&self) -> Result<Vec<Event>> {
-        self.stream_projectable_after(0).await
+        let rows = sqlx::query(&format!("{PROJECTABLE} ORDER BY occurred_at ASC"))
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows.iter().map(row_to_event).collect())
     }
 
-    /// Projectable events stored after `rowid` (see `max_rowid`).
-    pub async fn stream_projectable_after(&self, rowid: i64) -> Result<Vec<Event>> {
-        let rows = sqlx::query(
-            r#"
-            SELECT event_id, event_type, source, source_id,
-                   action_type, object_type, payload, visibility,
-                   occurred_at, ingested_at, batch_id, deleted_at
-            FROM events
-            WHERE deleted_at IS NULL
-              AND visibility != 'secret'
-              AND rowid > ?1
-            ORDER BY occurred_at ASC
-            "#,
+    /// event_ids of every projectable event: what the search index should
+    /// hold, without reading (and parsing) every payload.
+    pub async fn projectable_ids(&self) -> Result<Vec<String>> {
+        Ok(sqlx::query_scalar(
+            "SELECT event_id FROM events WHERE deleted_at IS NULL AND visibility != 'secret'",
         )
-        .bind(rowid)
         .fetch_all(&self.pool)
-        .await?;
+        .await?)
+    }
 
-        let events = rows
-            .into_iter()
-            .map(|r| {
+    /// The projectable events with these event_ids.
+    pub async fn projectable_by_ids(&self, ids: &[&String]) -> Result<Vec<Event>> {
+        let mut out = Vec::with_capacity(ids.len());
+        for chunk in ids.chunks(ROWS_PER_INSERT) {
+            let mut qb = sqlx::QueryBuilder::<sqlx::Sqlite>::new(format!("{PROJECTABLE} AND event_id IN ("));
+            let mut list = qb.separated(", ");
+            for id in chunk {
+                list.push_bind(id.as_str());
+            }
+            list.push_unseparated(")");
+            let rows = qb.build().fetch_all(&self.pool).await?;
+            out.extend(rows.iter().map(row_to_event));
+        }
+        Ok(out)
+    }
+}
+
+const PROJECTABLE: &str = "SELECT event_id, event_type, source, source_id, action_type, object_type, \
+    payload, visibility, occurred_at, ingested_at, batch_id, deleted_at FROM events \
+    WHERE deleted_at IS NULL AND visibility != 'secret'";
+
+fn row_to_event(r: &sqlx::sqlite::SqliteRow) -> Event {
                 let visibility_str: String = r.get("visibility");
                 let event_type_str: String = r.get("event_type");
 
@@ -461,11 +628,6 @@ impl SqliteEventStore {
                         .and_then(|s| Uuid::parse_str(s).ok()),
                     deleted_at: r.get("deleted_at"),
                 }
-            })
-            .collect();
-
-        Ok(events)
-    }
 }
 
 #[cfg(test)]
@@ -569,6 +731,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_append_many_updates_changed_rows_like_append() {
+        let (store, _temp_dir) = create_test_store().await;
+
+        let tx = store.begin_batch("s").await.unwrap();
+        store.append_many(&tx, &[create_test_event("s", "a"), create_test_event("s", "b")]).await.unwrap();
+        store.commit(tx).await.unwrap();
+        let before = store.stream_projectable().await.unwrap();
+
+        // a unchanged, b changed, c new, c repeated (first wins).
+        let mut b = create_test_event("s", "b");
+        b.payload = serde_json::json!({"test": "edited"});
+        let mut c2 = create_test_event("s", "c");
+        c2.payload = serde_json::json!({"test": "second"});
+        let tx = store.begin_batch("s").await.unwrap();
+        store
+            .append_many(&tx, &[create_test_event("s", "a"), b, create_test_event("s", "c"), c2])
+            .await
+            .unwrap();
+        let stats = store.commit(tx).await.unwrap();
+        assert_eq!((stats.inserted, stats.updated, stats.skipped), (1, 1, 2));
+
+        let after = store.stream_projectable().await.unwrap();
+        let get = |evs: &[Event], id: &str| evs.iter().find(|e| e.source_id == id).unwrap().clone();
+        assert_eq!(get(&after, "a").event_id, get(&before, "a").event_id);
+        assert_ne!(get(&after, "b").event_id, get(&before, "b").event_id);
+        assert_eq!(get(&after, "b").payload["test"], "edited");
+        assert_eq!(get(&after, "c").payload["test"], "value");
+
+        // A row from a rolled-back batch comes back.
+        let tx = store.begin_batch("s").await.unwrap();
+        store.append_many(&tx, &[create_test_event("s", "d")]).await.unwrap();
+        store.rollback(tx).await.unwrap();
+        let tx = store.begin_batch("s").await.unwrap();
+        store.append_many(&tx, &[create_test_event("s", "d")]).await.unwrap();
+        let stats = store.commit(tx).await.unwrap();
+        assert_eq!(stats.updated, 1);
+        assert_eq!(store.count_by_source("s").await.unwrap(), 4);
+    }
+
+    #[tokio::test]
     async fn test_deduplication() {
         let (store, _temp_dir) = create_test_store().await;
 
@@ -590,6 +792,62 @@ mod tests {
         // Total should still be 1
         let count = store.count_total().await.expect("Failed to count");
         assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_changed_payload_updates_in_place_with_new_event_id() {
+        let (store, _temp_dir) = create_test_store().await;
+
+        let tx = store.begin_batch("test-source").await.unwrap();
+        store.append(&tx, create_test_event("test-source", "doc-1")).await.unwrap();
+        store.commit(tx).await.unwrap();
+        let first_id = store.stream_projectable().await.unwrap()[0].event_id;
+
+        // Same row again: unchanged, skipped.
+        let tx = store.begin_batch("test-source").await.unwrap();
+        store.append(&tx, create_test_event("test-source", "doc-1")).await.unwrap();
+        let stats = store.commit(tx).await.unwrap();
+        assert_eq!((stats.inserted, stats.updated, stats.skipped), (0, 0, 1));
+
+        // The source row now carries more: updated, with a new event_id.
+        let tx = store.begin_batch("test-source").await.unwrap();
+        let mut changed = create_test_event("test-source", "doc-1");
+        changed.payload = serde_json::json!({"test": "value", "content": "full text"});
+        store.append(&tx, changed).await.unwrap();
+        let stats = store.commit(tx).await.unwrap();
+        assert_eq!((stats.inserted, stats.updated, stats.skipped), (0, 1, 0));
+
+        let events = store.stream_projectable().await.unwrap();
+        assert_eq!(events.len(), 1);
+        assert_ne!(events[0].event_id, first_id);
+        assert_eq!(events[0].payload["content"], "full text");
+    }
+
+    #[tokio::test]
+    async fn test_repeated_id_in_one_batch_keeps_the_first_row() {
+        let (store, _temp_dir) = create_test_store().await;
+        let tx = store.begin_batch("test-source").await.unwrap();
+        store.append(&tx, create_test_event("test-source", "dup")).await.unwrap();
+        let mut second = create_test_event("test-source", "dup");
+        second.payload = serde_json::json!({"test": "other"});
+        store.append(&tx, second).await.unwrap();
+        let stats = store.commit(tx).await.unwrap();
+        assert_eq!((stats.inserted, stats.updated, stats.skipped), (1, 0, 1));
+        assert_eq!(store.stream_projectable().await.unwrap()[0].payload["test"], "value");
+    }
+
+    #[tokio::test]
+    async fn test_rolled_back_row_comes_back_on_next_build() {
+        let (store, _temp_dir) = create_test_store().await;
+        let tx = store.begin_batch("test-source").await.unwrap();
+        store.append(&tx, create_test_event("test-source", "doc-1")).await.unwrap();
+        store.rollback(tx).await.unwrap();
+        assert_eq!(store.stream_projectable().await.unwrap().len(), 0);
+
+        let tx = store.begin_batch("test-source").await.unwrap();
+        store.append(&tx, create_test_event("test-source", "doc-1")).await.unwrap();
+        store.commit(tx).await.unwrap();
+        assert_eq!(store.stream_projectable().await.unwrap().len(), 1);
     }
 
     #[tokio::test]
