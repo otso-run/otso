@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getSourceInfo } from '$lib/data/sources';
   import { getActionVerb } from '$lib/data/actions';
+  import { highlighted, safeHref } from '$lib/safe-html';
 
   interface SearchResult {
     id: number;
@@ -71,13 +72,13 @@
     >
       <span class="col-source">{info.icon} {info.label}</span>
       <span class="col-action">{getActionVerb(result.entry_type, result.source)}</span>
-      <span class="col-title">{@html result.title}</span>
-      <span class="col-snippet">{@html result.snippet}</span>
+      <span class="col-title">{@html highlighted(result.title)}</span>
+      <span class="col-snippet">{@html highlighted(result.snippet)}</span>
       <span class="col-date">
         {formatDate(result.ts)}
-        {#if result.url}
+        {#if safeHref(result.url)}
           <a
-            href={result.url}
+            href={safeHref(result.url)}
             target="_blank"
             rel="noopener noreferrer"
             class="external-link"
