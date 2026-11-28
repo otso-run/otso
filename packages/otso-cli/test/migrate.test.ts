@@ -29,7 +29,8 @@ describe('chronicle-etl migration', () => {
       pinboard: { accessToken: 'testuser:ABC123' },
       lastfm: { apiKey: 'lfkey', username: 'testuser' },
     });
-    expect(unsupportedChronicleServices(dir)).toEqual(['mastodon', 'spotify']);
+    // Spotify has a login now, but this fixture lacks a secret and refresh token, so nothing is mapped.
+    expect(unsupportedChronicleServices(dir)).toEqual(['mastodon']);
   });
 
   test('saves without verify and keeps existing credentials', async () => {
