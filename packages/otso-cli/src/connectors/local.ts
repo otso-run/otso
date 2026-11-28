@@ -403,3 +403,95 @@ export const things: Connector = {
     }))
   ),
 };
+
+// ── Timing ───────────────────────────────────────────────────────────────
+
+const timingPaths = ['~/Library/Application Support/info.eurocomp.Timing2/SQLite.db'];
+/** Timing reassigns projects and merges entries after the fact, so each sync re-reads this far back. */
+const TIMING_LOOKBACK_SECONDS = 7 * 24 * 3600;
+const TIMING_CURSOR = 'appactivity:startDate';
+
+/**
+ * Where to start reading. The cursor is the newest startDate already stored.
+ * A database carried over from Chronicle has rows but no cursor, so it starts
+ * after its newest row instead of reading Timing's whole history again.
+ */
+function timingStart(store: RunContext['store'], full?: boolean): number {
+  if (full) return 0;
+  const saved = Number(store.getState(TIMING_CURSOR));
+  if (saved > 0) return saved - TIMING_LOOKBACK_SECONDS;
+  try {
+    const r = store.db.query(`SELECT MAX(startTime) AS t FROM events WHERE source = 'timing'`).get() as { t: string | null };
+    const t = r?.t ? Date.parse(r.t) / 1000 : NaN;
+    return Number.isFinite(t) ? t - TIMING_LOOKBACK_SECONDS : 0;
+  } catch {
+    return 0; // no events table yet: a first sync reads everything
+  }
+}
+
+/**
+ * One row per app activity, in the shape Chronicle used, so the rows it
+ * imported and the ones synced here read the same: agent is the app, object
+ * the window title and path, result the project.
+ */
+export const timing: Connector = {
+  id: 'timing',
+  displayName: 'Timing',
+  description: 'App and document usage',
+  kind: 'local',
+  dbPath: 'timing/chronicle/chronicle.db',
+  tables: [EVENTS_TABLE],
+  localPaths: timingPaths,
+  async sync({ store, full, log }) {
+    const path = timingPaths.map(resolveLocalPath).find(Boolean);
+    if (!path) throw new NotOnThisMacError('Timing');
+    const since = timingStart(store, full);
+    if (since > 0) log(`Reading activity since ${fromUnixSeconds(since)}`);
+
+    return withDatabaseCopy(path, (db) => {
+      let newest = 0;
+      let read = 0;
+      const deleted: string[] = [];
+      const rows = function* () {
+        for (const r of db
+          .query(
+            `SELECT CAST(a.id AS TEXT) AS id, a.startDate, a.endDate, a.isDeleted, app.title AS app, app.executable, app.bundleIdentifier,
+                    t.stringValue AS title, p.stringValue AS path, pr.title AS project
+             FROM AppActivity a
+             LEFT JOIN Application app ON app.id = a.applicationID
+             LEFT JOIN Title t ON t.id = a.titleID
+             LEFT JOIN Path p ON p.id = a.pathID
+             LEFT JOIN Project pr ON pr.id = a.projectID
+             WHERE a.startDate > ?
+             ORDER BY a.startDate`
+          )
+          .iterate(since) as Iterable<any>) {
+          newest = Math.max(newest, r.startDate);
+          if (r.isDeleted) {
+            deleted.push(r.id);
+            continue;
+          }
+          read++;
+          // Some apps put a window title in Path rather than Title.
+          const located = r.path && /^(\/|~\/|[a-z][a-z0-9+.-]*:\/\/)/i.test(r.path);
+          yield {
+            source_id: r.id, // TEXT: the ids are past 2^53
+            type: 'Action',
+            source: 'timing',
+            agent: { '@type': 'SoftwareApplication', name: r.app ?? r.executable, identifier: r.bundleIdentifier ?? undefined },
+            object: { '@type': 'CreativeWork', name: r.title ?? (located ? undefined : r.path) ?? undefined, url: located ? `file://${r.path}` : undefined },
+            result: r.project ? { '@type': 'Project', name: r.project } : null,
+            startTime: fromUnixSeconds(r.startDate),
+            end_time: fromUnixSeconds(r.endDate),
+          };
+        }
+      };
+      const stats: RunStats = {};
+      addStats(stats, 'events', store.upsert(EVENTS_TABLE, rows()));
+      const removed = store.deleteKeys(EVENTS_TABLE, deleted);
+      if (newest > 0) store.setState(TIMING_CURSOR, String(newest));
+      log(`${read.toLocaleString()} activities read from Timing${removed ? `, ${removed.toLocaleString()} deleted in Timing removed` : ''}`);
+      return stats;
+    });
+  },
+};
