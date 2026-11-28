@@ -64,6 +64,18 @@ Each `chronicle.db` has the tables the `sources.toml` queries read, plus an `_ot
 
 `otso index` runs `packages/otso-indexer` with `--sources-dir data/sources`, so it reads the real data even though `sources.toml` defaults to `data/fixtures`. It appends new events to `data/otso/events.db` and adds only those to `search.db`, the index otso-search reads, so a routine run takes seconds. `otso index --fresh` starts both over (needed only after ids change, e.g. after `otso adopt`). `otso index --fixtures` indexes the mock data instead. Build the indexer once with `cargo build --release` in `packages/otso-indexer`; without that build it falls back to `cargo run`.
 
+When `sources-dir` is on a network share, the indexer copies each source database to `~/.otso/cache/sources` and reads the copy, which is much faster than querying SQLite over SMB. A copy is reused until its source changes, so a routine run only copies the sources that synced since. Sources marked `fixture = true` in `sources.toml` (the mock Twitter accounts) are built only by `otso index --fixtures`.
+
+## Run log
+
+Every `otso sync` and `otso index` adds a line to `~/.otso/logs/runs.jsonl` with each source's time, row counts and errors, and for index runs the time spent copying, reading and writing each source and any query slower than a second. The log holds names, counts, timings and error messages, never the data itself. `otso index` prints a short summary instead of every slow statement, and `otso log` shows recent runs and the sources that are slow or failing:
+
+```bash
+pnpm otso log                   # last 10 runs, then slow or failing sources
+pnpm otso log --source lastfm   # one source over time
+pnpm otso log --kind sync -n 30 --json
+```
+
 ## Running on a schedule
 
 `otso sync` with no arguments syncs every connected API source and every local source that's on this Mac and has been synced before (by any Mac). Each source reports what's new and what's already stored, and when and from which Mac it was last synced. To also index, add `--index`:

@@ -642,6 +642,8 @@ FROM blocks
 [[sources]]
 name = "twitter-mockuser"
 enabled = true
+# Mock account in data/fixtures: only `otso index --fixtures` builds it.
+fixture = true
 db_path = "twitter-mockuser/chronicle/chronicle.db"
 category = "social"
 
@@ -678,6 +680,8 @@ FROM likes
 [[sources]]
 name = "twitter-testaccount"
 enabled = true
+# Mock account in data/fixtures: only `otso index --fixtures` builds it.
+fixture = true
 db_path = "twitter-testaccount/chronicle/chronicle.db"
 category = "social"
 

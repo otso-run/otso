@@ -107,7 +107,18 @@ pub struct Transaction {
 /// SQLite-backed event store with batch transaction support
 pub struct SqliteEventStore {
     pool: SqlitePool,
+    /// Sources are read in parallel but written one chunk at a time: SQLite
+    /// has a single writer, and concurrent write transactions would only
+    /// wait on each other's locks (or fail with "database is locked").
+    write_lock: tokio::sync::Mutex<()>,
 }
+
+/// Rows per INSERT statement: 11 columns each keeps this well under
+/// SQLite's 32,766 bound-parameter limit.
+const ROWS_PER_INSERT: usize = 500;
+/// Rows per write transaction, so one big source doesn't hold the write
+/// lock (and the readers of events.db) for its whole run.
+const ROWS_PER_TRANSACTION: usize = 10_000;
 
 impl SqliteEventStore {
     /// Open or create an event store in the specified data directory
@@ -119,8 +130,7 @@ impl SqliteEventStore {
             std::fs::create_dir_all(parent)?;
         }
 
-        let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
-        let pool = SqlitePool::connect(&db_url).await?;
+        let pool = SqlitePool::connect_with(crate::db::read_write(&db_path)).await?;
 
         // Initialize schema
         schema::init_schema(&pool).await?;
@@ -136,7 +146,7 @@ impl SqliteEventStore {
             .execute(&pool)
             .await?;
 
-        Ok(Self { pool })
+        Ok(Self { pool, write_lock: tokio::sync::Mutex::new(()) })
     }
 
     /// Begin a new batch transaction for a source
@@ -198,6 +208,44 @@ impl SqliteEventStore {
         }
 
         Ok(())
+    }
+
+    /// Append many events to the batch: multi-row INSERT OR IGNORE statements
+    /// inside a few large transactions instead of one autocommit per row.
+    /// Returns how many were new (the rest were already stored).
+    pub async fn append_many(&self, tx: &Transaction, events: &[Event]) -> Result<i64> {
+        let ingested_at = chrono::Utc::now().timestamp();
+        let batch_id = tx.batch_id.to_string();
+        let mut inserted = 0i64;
+
+        for chunk in events.chunks(ROWS_PER_TRANSACTION) {
+            let _guard = self.write_lock.lock().await;
+            let mut db_tx = self.pool.begin().await?;
+            for rows in chunk.chunks(ROWS_PER_INSERT) {
+                let mut qb = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
+                    "INSERT OR IGNORE INTO events (event_id, event_type, source, source_id, \
+                     action_type, object_type, payload, visibility, occurred_at, ingested_at, batch_id) ",
+                );
+                qb.push_values(rows, |mut b, e| {
+                    b.push_bind(e.event_id.to_string())
+                        .push_bind(e.event_type.as_str())
+                        .push_bind(&e.source)
+                        .push_bind(&e.source_id)
+                        .push_bind(&e.action_type)
+                        .push_bind(&e.object_type)
+                        .push_bind(e.payload.to_string())
+                        .push_bind(e.visibility.as_str())
+                        .push_bind(e.occurred_at)
+                        .push_bind(ingested_at)
+                        .push_bind(&batch_id);
+                });
+                inserted += qb.build().execute(&mut *db_tx).await?.rows_affected() as i64;
+            }
+            db_tx.commit().await?;
+        }
+
+        tx.event_count.fetch_add(inserted, Ordering::SeqCst);
+        Ok(inserted)
     }
 
     /// Commit the transaction
@@ -347,8 +395,21 @@ impl SqliteEventStore {
         Ok(count)
     }
 
+    /// Highest rowid in events. Inserts only ever take a higher one, so a
+    /// projection can remember it and next time read just the newer events.
+    pub async fn max_rowid(&self) -> Result<i64> {
+        Ok(sqlx::query_scalar("SELECT COALESCE(MAX(rowid), 0) FROM events")
+            .fetch_one(&self.pool)
+            .await?)
+    }
+
     /// Stream all projectable events (for rebuilding projections)
     pub async fn stream_projectable(&self) -> Result<Vec<Event>> {
+        self.stream_projectable_after(0).await
+    }
+
+    /// Projectable events stored after `rowid` (see `max_rowid`).
+    pub async fn stream_projectable_after(&self, rowid: i64) -> Result<Vec<Event>> {
         let rows = sqlx::query(
             r#"
             SELECT event_id, event_type, source, source_id,
@@ -357,9 +418,11 @@ impl SqliteEventStore {
             FROM events
             WHERE deleted_at IS NULL
               AND visibility != 'secret'
+              AND rowid > ?1
             ORDER BY occurred_at ASC
             "#,
         )
+        .bind(rowid)
         .fetch_all(&self.pool)
         .await?;
 
@@ -475,6 +538,29 @@ mod tests {
 
         let count = store.count_total().await.expect("Failed to count");
         assert_eq!(count, 10);
+    }
+
+    #[tokio::test]
+    async fn test_append_many_spans_statements_and_dedupes() {
+        let (store, _temp_dir) = create_test_store().await;
+
+        // More rows than one INSERT statement holds, with one duplicate.
+        let mut events: Vec<Event> = (0..ROWS_PER_INSERT + 7)
+            .map(|i| create_test_event("bulk", &format!("id-{i}")))
+            .collect();
+        events.push(create_test_event("bulk", "id-0"));
+
+        let tx = store.begin_batch("bulk").await.unwrap();
+        let inserted = store.append_many(&tx, &events).await.unwrap();
+        let stats = store.commit(tx).await.unwrap();
+        assert_eq!(inserted, (ROWS_PER_INSERT + 7) as i64);
+        assert_eq!(stats.inserted, inserted);
+
+        // A second run of the same rows adds nothing.
+        let tx = store.begin_batch("bulk").await.unwrap();
+        assert_eq!(store.append_many(&tx, &events).await.unwrap(), 0);
+        store.commit(tx).await.unwrap();
+        assert_eq!(store.count_by_source("bulk").await.unwrap(), (ROWS_PER_INSERT + 7) as i64);
     }
 
     #[tokio::test]

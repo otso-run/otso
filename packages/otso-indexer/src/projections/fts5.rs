@@ -21,8 +21,7 @@ impl Fts5Projection {
             std::fs::create_dir_all(parent)?;
         }
 
-        let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
-        let pool = SqlitePool::connect(&db_url).await?;
+        let pool = SqlitePool::connect_with(crate::db::read_write(&db_path)).await?;
 
         // Initialize schema
         init_schema(&pool).await?;
@@ -52,6 +51,7 @@ impl Fts5Projection {
             .await?;
 
         // Stream all projectable events
+        let high_water = event_store.max_rowid().await?;
         let events = event_store.stream_projectable().await?;
 
         tracing::info!("Rebuilding FTS5 from {} events", events.len());
@@ -60,6 +60,7 @@ impl Fts5Projection {
 
         // Update projection state
         self.update_state(stats.entries_added).await?;
+        self.set_indexed_through(high_water).await?;
 
         stats.duration_ms = start.elapsed().as_millis() as i64;
         Ok(stats)
@@ -82,7 +83,11 @@ impl Fts5Projection {
             .fetch_one(&self.pool)
             .await?;
 
-        let events = event_store.stream_projectable().await?;
+        // Only events stored since the last update can be new. The id check
+        // below still guards against re-adding any of them.
+        let high_water = event_store.max_rowid().await?;
+        let since = self.indexed_through().await?;
+        let events = event_store.stream_projectable_after(since).await?;
         let new: Vec<_> = events
             .iter()
             .filter(|e| !indexed.contains(&e.event_id.to_string()))
@@ -94,9 +99,29 @@ impl Fts5Projection {
             .fetch_one(&self.pool)
             .await?;
         self.update_state(total).await?;
+        self.set_indexed_through(high_water).await?;
 
         stats.duration_ms = start.elapsed().as_millis() as i64;
         Ok(stats)
+    }
+
+    /// The events.db rowid this projection has seen everything up to, kept
+    /// in projection_state.last_event_id (0, a full scan, when unset).
+    async fn indexed_through(&self) -> Result<i64> {
+        let v: Option<Option<String>> = sqlx::query_scalar(
+            "SELECT last_event_id FROM projection_state WHERE projection_name = 'fts5'",
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(v.flatten().and_then(|s| s.strip_prefix("rowid:").and_then(|n| n.parse().ok())).unwrap_or(0))
+    }
+
+    async fn set_indexed_through(&self, rowid: i64) -> Result<()> {
+        sqlx::query("UPDATE projection_state SET last_event_id = ?1 WHERE projection_name = 'fts5'")
+            .bind(format!("rowid:{rowid}"))
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     /// Insert events in transactions of 1,000 (one commit per batch instead of

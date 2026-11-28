@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
+use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Row, SqlitePool};
+use std::path::Path;
 use uuid::Uuid;
 
 use crate::config::QueryConfig;
@@ -56,25 +58,31 @@ async fn validate_query(pool: &SqlitePool, query: &QueryConfig) -> Result<()> {
     Ok(())
 }
 
+/// Open a source database read-only, with a single connection (queries run
+/// one after another, and each extra connection is another file open,
+/// which costs round trips on a network share).
+pub async fn open_source(db_path: &Path, immutable: bool) -> Result<SqlitePool> {
+    SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(crate::db::read_only(db_path, immutable))
+        .await
+        .with_context(|| format!("Failed to connect to database: {}", db_path.display()))
+}
+
 /// Extract events from a SQLite database using the configured query
 pub async fn extract_from_sqlite(
-    db_path: &str,
+    pool: &SqlitePool,
     source_name: &str,
     query: &QueryConfig,
     default_visibility: Option<&str>,
 ) -> Result<Vec<Event>> {
-    let db_url = format!("sqlite:{}?mode=ro", db_path);
-    let pool = SqlitePool::connect(&db_url)
-        .await
-        .with_context(|| format!("Failed to connect to database: {}", db_path))?;
-
     // Validate query before execution
-    validate_query(&pool, query)
+    validate_query(pool, query)
         .await
         .with_context(|| format!("Query validation failed for source '{}'", source_name))?;
 
     let rows = sqlx::query(&query.sql)
-        .fetch_all(&pool)
+        .fetch_all(pool)
         .await
         .with_context(|| format!("Failed to execute query for {}", source_name))?;
 
