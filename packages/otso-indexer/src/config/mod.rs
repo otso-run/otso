@@ -39,6 +39,10 @@ pub struct SourceConfig {
     pub aggregation: Option<AggregationConfig>,
     #[serde(default)]
     pub visibility: Option<String>,
+    /// Mock data for data/fixtures only; skipped by a real build unless
+    /// `build --include-fixtures` (what `otso index --fixtures` passes).
+    #[serde(default)]
+    pub fixture: bool,
 }
 
 fn default_enabled() -> bool {
@@ -227,6 +231,7 @@ key_fields = ["app_name", "project_path"]
             queries: vec![],
             aggregation: None,
             visibility: None,
+            fixture: false,
         };
         assert!(validate_source(&source).is_err());
     }

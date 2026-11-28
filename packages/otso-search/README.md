@@ -135,6 +135,8 @@ A browser reload reads the running snapshot. Repeat the reindex, conversion, and
 
 [/coverage](http://127.0.0.1:5173/coverage) shows every source as one lane on a shared time axis, so you can see where each archive starts, where it has holes and when it last got anything new. Brighter cells hold more records. Red marks a gap of at least the chosen length (a week, a month, three months or a year) between two records, and a dashed amber line marks a source that has had nothing since its last record. Drag across the lanes or the axis to zoom, or pick a range. Select a source's name to list its longest gaps; selecting one zooms to it, and **Browse in search** opens search filtered to that source. Records without a timestamp can't be placed and are counted separately.
 
+**by category** (on by default) groups sources the way the search page's category chips do, so all browsers or all music sources share one lane. That lane only shows a gap when none of its sources had anything, and selecting it lists the sources under it. Categories with a single source stay as a plain lane.
+
 The page reads `search_entry_map` once and keeps the result until the index changes on disk, so the first load after a rebuild takes a moment on a large archive.
 
 ## Running without real data
