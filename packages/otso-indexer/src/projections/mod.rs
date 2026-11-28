@@ -25,7 +25,7 @@ pub struct ProjectionStats {
 pub async fn update_all(
     data_dir: &str,
     event_store: &crate::event_store::SqliteEventStore,
-) -> Result<()> {
+) -> Result<ProjectionStats> {
     let projection = Fts5Projection::open(data_dir).await?;
     let stats = projection.update(event_store).await?;
     tracing::info!("FTS5: {} entries added in {}ms", stats.entries_added, stats.duration_ms);
@@ -35,7 +35,7 @@ pub async fn update_all(
         tracing::info!("Meilisearch projection will be updated on next rebuild");
     }
 
-    Ok(())
+    Ok(stats)
 }
 
 /// Rebuild FTS5 projection from event store

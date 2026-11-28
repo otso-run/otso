@@ -19,6 +19,7 @@ import { ask } from './prompt.js';
 import { isNetworkPath } from '../core/storage.js';
 import { NotOnThisMacError } from '../connectors/util.js';
 import { getDeviceName, ShareNotMountedError, slugDevice } from '../core/device.js';
+import { appendRun, summarizeRun, type SourceRun } from '../core/runlog.js';
 
 /**
  * The scriptable commands: everything the TUI does, without the TUI, so
@@ -99,11 +100,26 @@ export async function syncCommand(ids: string[], opts: { full?: boolean; index?:
   }
   let failed = 0;
   let synced = 0;
+  const started = Date.now();
+  const runs: SourceRun[] = [];
+  const done = (name: string, t0: number, rest: Partial<SourceRun> & { ok: boolean }) =>
+    runs.push({ name, ms: Date.now() - t0, ...rest });
+  const logRun = async () =>
+    appendRun({
+      kind: 'sync',
+      started_at: new Date(started).toISOString(),
+      duration_ms: Date.now() - started,
+      device: await getDeviceName().catch(() => undefined),
+      ok: runs.every((r) => r.ok),
+      sources: runs,
+    });
   for (const id of targets) {
     console.log(`\n${requireConnector(id).displayName}`);
+    const t0 = Date.now();
     try {
       const r = await runSync(id, { full: opts.full, log });
       synced++;
+      done(r.source, t0, { ok: true, ...sumStats(r.stats) });
       console.log(`  ✓ ${formatStats(r.stats)}`);
       const stored = describeStored(r, id);
       if (stored) console.log(`    ${stored}`);
@@ -114,15 +130,26 @@ export async function syncCommand(ids: string[], opts: { full?: boolean; index?:
       }
       if (err instanceof ShareNotMountedError) {
         console.error(`  ✗ ${err.message}`);
+        done(id, t0, { ok: false, error: err.message });
+        await logRun();
         process.exitCode = 1;
         return;
       }
       failed++;
-      console.error(`  ✗ ${err instanceof Error ? err.message : String(err)}`);
+      const message = err instanceof Error ? err.message : String(err);
+      done(id, t0, { ok: false, error: message });
+      console.error(`  ✗ ${message}`);
     }
   }
+  await logRun();
   if (opts.index && synced) await indexCommand({});
   if (failed) process.exitCode = 1;
+}
+
+/** Rows new / already stored across a run's tables. */
+function sumStats(stats: Record<string, { inserted: number; updated: number }>) {
+  const all = Object.values(stats);
+  return { inserted: all.reduce((n, s) => n + s.inserted, 0), skipped: all.reduce((n, s) => n + s.updated, 0) };
 }
 
 const fmtTime = (iso: string) => {
@@ -195,6 +222,11 @@ export async function indexCommand(opts: { source?: string; fixtures?: boolean; 
     const build = await runIndexer(['build', ...(opts.source ? ['--source', opts.source] : [])], {
       fixtures: opts.fixtures,
     });
+    if (build.run?.sources.length) {
+      console.log('');
+      for (const line of summarizeRun(build.run)) console.log(line);
+      console.log('Details: otso log');
+    }
     if (build.exitCode !== 0) fail(`otso-indexer build exited with ${build.exitCode}`);
     console.log(`\n✓ Search index updated: ${displayPath(getDataRoot())}/otso/search.db`);
   } catch (err) {
