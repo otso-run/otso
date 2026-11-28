@@ -130,3 +130,14 @@ SQL
 ```
 
 A browser reload reads the running snapshot. Repeat the reindex, conversion, and launch steps when newer normalized data is ready.
+
+## Running without real data
+
+To work on the UI without a personal archive, generate a synthetic index and point the app at it. Nothing in it comes from real sources.
+
+```sh
+node scripts/seed-synthetic.cjs /tmp/otso-demo
+OTSO_DATA_DIR=/tmp/otso-demo MEILISEARCH_URL=http://127.0.0.1:1 npm run dev
+```
+
+The Playwright suite has a `mobile` project that checks the phone layout at an iPhone viewport: `npx playwright test --project=mobile`.

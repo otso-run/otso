@@ -51,6 +51,7 @@
   let selectedDocumentId = $state<number | null>(null);
   let searchInput: HTMLInputElement | null = $state(null);
   let timelineBuckets = $state<TimelineBucket[]>([]);
+  let showSources = $state(false);
   const PAGE_SIZE = 500;
 
   // Load more results when scrolling
@@ -190,6 +191,51 @@
     return stats?.total ?? 0;
   });
 
+  // Number of source filters in effect, shown on the phone "Sources" button
+  let sourceFilterCount = $derived(selectedSources.size + excludedSources.size);
+
+  function clearAllFilters() {
+    selectedSources = new Set();
+    selectedCategories = new Set();
+    excludedSources = new Set();
+    excludedCategories = new Set();
+    dateRange = null;
+    selectedIdx = 0;
+    if (query.trim()) {
+      doSearch();
+    } else {
+      loadRecent();
+    }
+  }
+
+  function clearSources() {
+    selectedSources = new Set();
+    excludedSources = new Set();
+    selectedIdx = 0;
+    if (dateRange) {
+      fetchDateRangeResults();
+    } else if (query.trim()) {
+      if (selectedCategories.size > 0) fetchFilteredResults();
+      else doSearch();
+    } else if (selectedCategories.size > 0) {
+      browseCategory();
+    } else {
+      loadRecent();
+    }
+  }
+
+  function clearQuery() {
+    query = '';
+    doSearch();
+    searchInput?.focus();
+  }
+
+  // The sources sheet (phones only) should not scroll the page behind it
+  $effect(() => {
+    document.documentElement.classList.toggle('sheet-open', showSources);
+    return () => document.documentElement.classList.remove('sheet-open');
+  });
+
   // Dynamic placeholder text based on active filters
   let searchPlaceholder = $derived.by(() => {
     if (hasActiveFilters && filteredCount > 0) {
@@ -222,8 +268,10 @@
         searchInput?.focus();
         searchInput?.select();
       } else if (e.key === 'Escape') {
-        // First escape: clear filters
-        if (hasActiveFilters) {
+        if (showSources) {
+          showSources = false;
+        } else if (hasActiveFilters) {
+          // First escape: clear filters
           selectedSources = new Set();
           selectedCategories = new Set();
           excludedSources = new Set();
@@ -519,7 +567,7 @@
         {#each Array.from(selectedCategories) as cat}
           {@const catInfo = CATEGORIES[cat]}
           <button
-            class="filter-pill"
+            class="filter-pill desktop-only"
             style:--pill-color={catInfo?.color}
             onclick={() => toggleCategory(cat)}
           >
@@ -533,11 +581,25 @@
           bind:this={searchInput}
           oninput={doSearch}
           placeholder={searchPlaceholder}
+          enterkeyhint="search"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
+          onkeydown={(e) => {
+            // Dismiss the on-screen keyboard once the search is submitted
+            if (e.key === 'Enter' && window.matchMedia('(pointer: coarse)').matches) {
+              searchInput?.blur();
+            }
+          }}
           autofocus
         />
 
+        {#if query}
+          <button class="clear-query mobile-only" aria-label="Clear search" onclick={clearQuery}>×</button>
+        {/if}
+
         {#if totalCount > 0}
-          <span class="timing">
+          <span class="timing desktop-only">
             {results.length.toLocaleString()}/{totalCount.toLocaleString()}
             in {searchTime}ms
             {#if pendingFilterFetch || loading}<span class="loading">...</span>{/if}
@@ -548,6 +610,17 @@
       <!-- Category filters -->
       {#if categoryCounts.length > 0}
         <div class="category-row">
+          {#if displayFacets.length > 0}
+            <button
+              class="sources-button mobile-only"
+              class:active={sourceFilterCount > 0}
+              aria-haspopup="dialog"
+              aria-expanded={showSources}
+              onclick={() => showSources = true}
+            >
+              Sources{#if sourceFilterCount > 0}<span class="badge">{sourceFilterCount}</span>{/if}
+            </button>
+          {/if}
           <CategoryFilters
             categories={categoryCounts}
             selected={selectedCategories}
@@ -556,6 +629,23 @@
           />
         </div>
       {/if}
+
+      <!-- Result count and filter reset (phones) -->
+      <div class="status-row mobile-only">
+        <span>
+          {#if totalCount > 0}
+            {results.length.toLocaleString()} of {totalCount.toLocaleString()} · {Math.round(searchTime)}ms
+            {#if pendingFilterFetch || loading}<span class="loading">...</span>{/if}
+          {:else if pendingFilterFetch}
+            Searching<span class="loading">...</span>
+          {:else if stats}
+            No results
+          {/if}
+        </span>
+        {#if hasActiveFilters}
+          <button class="clear-filters" onclick={clearAllFilters}>Clear filters</button>
+        {/if}
+      </div>
     </div>
 
     <!-- Results -->
@@ -591,7 +681,17 @@
 
   <!-- Source facets sidebar -->
   {#if displayFacets.length > 0}
-    <aside>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="sheet-backdrop" class:open={showSources} onclick={() => showSources = false}></div>
+    <aside class:open={showSources} aria-label="Sources">
+      <div class="sheet-header">
+        <span class="sheet-title">Sources</span>
+        {#if sourceFilterCount > 0}
+          <button class="sheet-action" onclick={clearSources}>Reset</button>
+        {/if}
+        <button class="sheet-action primary" onclick={() => showSources = false}>Done</button>
+      </div>
       <div class="facets">
         {#each displayFacets as facet}
           {@const sourceInfo = getSourceInfo(facet.source)}
@@ -615,6 +715,16 @@
             <span class="facet-icon" style:color={catInfo?.color}>{sourceInfo.icon}</span>
             <span class="facet-name">{sourceInfo.label}</span>
             <span class="facet-count">{facet.count}</span>
+            <button
+              class="facet-exclude"
+              aria-pressed={isExcluded}
+              aria-label={isExcluded ? `Show ${sourceInfo.label}` : `Hide ${sourceInfo.label}`}
+              onclick={(e: MouseEvent) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleSource(facet.source, true);
+              }}
+            >{isExcluded ? 'hidden' : 'hide'}</button>
           </label>
         {/each}
       </div>
@@ -806,5 +916,329 @@
   .facet-count {
     color: #525252;
     font-size: 10px;
+  }
+
+  /* Phone-only pieces are hidden on desktop */
+  .mobile-only,
+  .sheet-header,
+  .sheet-backdrop,
+  .facet-exclude {
+    display: none;
+  }
+
+  /* Keyboard hints make no sense without a keyboard */
+  @media (max-width: 720px), (hover: none) and (pointer: coarse) {
+    .footer {
+      display: none;
+    }
+
+    .timeline-container {
+      bottom: 0;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+  }
+
+  /* ---------- Phones ---------- */
+  @media (max-width: 720px), (max-width: 950px) and (pointer: coarse) {
+    :global(html) {
+      -webkit-text-size-adjust: 100%;
+      background: #171717;
+    }
+
+    :global(body) {
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior-y: none;
+    }
+
+    :global(html.sheet-open),
+    :global(html.sheet-open body) {
+      overflow: hidden;
+    }
+
+    .desktop-only {
+      display: none;
+    }
+
+    .mobile-only {
+      display: revert;
+    }
+
+    .container {
+      display: block;
+      min-height: 100vh;
+      min-height: 100dvh;
+    }
+
+    main {
+      min-height: 100vh;
+      min-height: 100dvh;
+    }
+
+    .search-header {
+      padding: calc(8px + env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 0
+        max(12px, env(safe-area-inset-left));
+    }
+
+    .search-row {
+      height: 44px;
+      padding: 0 4px 0 12px;
+      border-radius: 12px;
+      background: #232323;
+      border: 1px solid #2e2e2e;
+    }
+
+    .search-row:focus-within {
+      border-color: #4a4a4a;
+    }
+
+    input[type="search"] {
+      /* 16px stops iOS Safari zooming the page on focus */
+      font-size: 16px;
+      min-width: 0;
+      height: 100%;
+      appearance: none;
+      -webkit-appearance: none;
+      border-radius: 0;
+    }
+
+    input[type="search"]::-webkit-search-cancel-button {
+      display: none;
+    }
+
+    input[type="search"]::placeholder {
+      color: #6b6b6b;
+    }
+
+    .clear-query {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      flex-shrink: 0;
+      border: none;
+      background: none;
+      color: #888;
+      font-size: 22px;
+      font-family: inherit;
+      line-height: 1;
+    }
+
+    .category-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 8px 0 0;
+      /* Let the chips scroll out to the screen edge */
+      margin-right: calc(-1 * max(12px, env(safe-area-inset-right)));
+      min-width: 0;
+    }
+
+    .sources-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      height: 36px;
+      padding: 0 12px;
+      border-radius: 18px;
+      border: 1px solid #3a3a3a;
+      background: #232323;
+      color: #d4d4d4;
+      font-family: inherit;
+      font-size: 12px;
+    }
+
+    .sources-button.active {
+      border-color: #3b82f6;
+      color: #fff;
+      background: #1e3a5f;
+    }
+
+    .badge {
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      box-sizing: border-box;
+      border-radius: 9px;
+      background: #3b82f6;
+      color: #fff;
+      font-size: 11px;
+      line-height: 18px;
+      text-align: center;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 32px;
+      font-size: 11px;
+      color: #737373;
+      white-space: nowrap;
+    }
+
+    .clear-filters {
+      height: 32px;
+      padding: 0 0 0 12px;
+      border: none;
+      background: none;
+      color: #4ECDC4;
+      font-family: inherit;
+      font-size: 12px;
+    }
+
+    /* Sources become a bottom sheet */
+    .sheet-backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      background: rgba(0, 0, 0, 0.6);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+
+    .sheet-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    aside {
+      position: fixed;
+      top: auto;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 50;
+      width: auto;
+      max-height: 80vh;
+      max-height: 80dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 0;
+      border-left: none;
+      border-top: 1px solid #333;
+      border-radius: 16px 16px 0 0;
+      background: #1c1c1c;
+      transform: translateY(100%);
+      visibility: hidden;
+      transition: transform 0.25s ease, visibility 0s linear 0.25s;
+    }
+
+    aside.open {
+      transform: none;
+      visibility: visible;
+      transition: transform 0.25s ease;
+    }
+
+    .sheet-header {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+      padding: 6px 8px 6px 16px;
+      border-bottom: 1px solid #2a2a2a;
+    }
+
+    .sheet-title {
+      flex: 1;
+      font-size: 14px;
+      color: #e5e5e5;
+    }
+
+    .sheet-action {
+      height: 44px;
+      padding: 0 12px;
+      border: none;
+      background: none;
+      color: #a3a3a3;
+      font-family: inherit;
+      font-size: 14px;
+    }
+
+    .sheet-action.primary {
+      color: #4ECDC4;
+    }
+
+    .facets {
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      gap: 0;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .facets label {
+      min-height: 48px;
+      box-sizing: border-box;
+      gap: 12px;
+      padding: 0 8px 0 max(16px, env(safe-area-inset-left));
+      border-bottom: 1px solid #262626;
+    }
+
+    .facets label:hover {
+      background: none;
+    }
+
+    .facets label.selected {
+      background: #1e3a5f;
+    }
+
+    .facets label.excluded {
+      background: #3f1e1e;
+      text-decoration: none;
+    }
+
+    .facets label.excluded .facet-name {
+      text-decoration: line-through;
+    }
+
+    .facet-icon {
+      width: 20px;
+      text-align: center;
+      font-size: 15px;
+    }
+
+    .facet-name {
+      font-size: 14px;
+      color: #d4d4d4;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .facet-count {
+      font-size: 12px;
+      color: #737373;
+    }
+
+    .facet-exclude {
+      display: block;
+      height: 44px;
+      min-width: 60px;
+      padding: 0 8px;
+      border: none;
+      background: none;
+      color: #737373;
+      font-family: inherit;
+      font-size: 11px;
+      text-align: right;
+    }
+
+    .facet-exclude[aria-pressed="true"] {
+      color: #f87171;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    aside,
+    .sheet-backdrop {
+      transition: none;
+    }
   }
 </style>

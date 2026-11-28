@@ -82,4 +82,41 @@
   .cat:hover:not(.selected) {
     background-color: color-mix(in srgb, var(--cat-color) 20%, transparent);
   }
+
+  /* Phones: one swipeable row of chips instead of a wrapped block */
+  @media (max-width: 720px), (max-width: 950px) and (pointer: coarse) {
+    .filters {
+      flex: 1;
+      min-width: 0;
+      flex-wrap: nowrap;
+      gap: 6px;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      padding-right: 12px;
+    }
+
+    .filters::-webkit-scrollbar {
+      display: none;
+    }
+
+    .cat,
+    .clear {
+      flex-shrink: 0;
+      height: 36px;
+      padding: 0 12px;
+      border-radius: 18px;
+      font-size: 11px;
+      margin-right: 0;
+    }
+
+    .cat {
+      border: 1px solid color-mix(in srgb, var(--cat-color) 35%, transparent);
+    }
+
+    .cat:hover:not(.selected) {
+      background-color: transparent;
+    }
+  }
 </style>

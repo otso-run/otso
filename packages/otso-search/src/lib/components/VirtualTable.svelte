@@ -33,12 +33,27 @@
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
   }
 
+  // The page (not this element) is what scrolls, so watch a sentinel at the
+  // end of the list to know when to fetch the next page.
+  let sentinel: HTMLDivElement | null = $state(null);
+
+  $effect(() => {
+    if (!sentinel || results.length === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) onLoadMore?.();
+      },
+      { rootMargin: '800px 0px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  });
+
   function handleScroll(e: Event) {
     const el = e.target as HTMLDivElement;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     // Load more when near bottom (within 500px)
     if (distanceFromBottom < 500) {
-      console.log('[scroll] near bottom, loading more...', distanceFromBottom);
       onLoadMore?.();
     }
   }
@@ -73,6 +88,7 @@
       </span>
     </div>
   {/each}
+  <div class="sentinel" bind:this={sentinel} aria-hidden="true"></div>
 </div>
 
 <style>
@@ -171,5 +187,85 @@
   :global(.row mark) {
     background: transparent;
     color: #fbbf24;
+  }
+
+  .sentinel {
+    height: 1px;
+  }
+
+  /* Phones: two-line rows. Title and date on top, source and snippet below. */
+  @media (max-width: 720px), (max-width: 950px) and (pointer: coarse) {
+    .row {
+      height: auto;
+      min-height: 60px;
+      box-sizing: border-box;
+      display: grid;
+      grid-template-columns: auto auto minmax(0, 1fr) auto;
+      grid-template-areas:
+        "title title title date"
+        "source action snippet snippet";
+      align-items: baseline;
+      align-content: center;
+      gap: 4px 8px;
+      padding: 10px max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left));
+      content-visibility: auto;
+      contain-intrinsic-size: auto 60px;
+    }
+
+    /* No keyboard cursor on touch, so no persistent highlight */
+    .row.selected,
+    .row:hover {
+      background: transparent;
+    }
+
+    .row:active {
+      background: #222;
+    }
+
+    .col-title {
+      grid-area: title;
+      width: auto;
+      min-width: 0;
+      font-size: 15px;
+      line-height: 1.3;
+      color: #f0f0f0;
+    }
+
+    .col-date {
+      grid-area: date;
+      width: auto;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .col-source {
+      grid-area: source;
+      width: auto;
+      max-width: 40vw;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+      color: #a3a3a3;
+    }
+
+    .col-action {
+      grid-area: action;
+      width: auto;
+      white-space: nowrap;
+      font-size: 12px;
+    }
+
+    .col-snippet {
+      grid-area: snippet;
+      font-size: 12px;
+      line-height: 1.4;
+      color: #7a7a7a;
+    }
+
+    /* Links open from the detail sheet instead of a hover target */
+    .external-link {
+      display: none;
+    }
   }
 </style>
